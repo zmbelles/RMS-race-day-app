@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · RMS Race Day</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/rms-logo.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;1,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/rms.css') }}" rel="stylesheet">
+</head>
+<body>
+{% set nav = [
+  ('dashboard', 'Dashboard', 'speedometer2'),
+  ('drivers', 'Drivers', 'person-badge'),
+  ('races', 'Races', 'flag'),
+  ('schedule', 'Schedule', 'calendar3'),
+  ('garage', 'Garage', 'tools'),
+  ('setups', 'Setups', 'sliders'),
+  ('times', 'Times', 'stopwatch'),
+] %}
+{% set section = request.endpoint.split('_')[0] if request.endpoint else '' %}
+{% set section = {'driver': 'drivers', 'race': 'races', 'setup': 'setups'}.get(section, section) %}
+
+<div class="rms-shell">
+  <aside class="rms-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="sidebar">
+    <div class="rms-brand">
+      <a href="{{ url_for('dashboard') }}" class="d-flex align-items-center gap-2 text-decoration-none">
+        <img src="{{ url_for('static', filename='img/rms-logo.svg') }}" alt="RMS" class="rms-logo">
+        <span class="rms-brand-text">Race Day</span>
+      </a>
+      <button type="button" class="btn-close btn-close-white d-lg-none" data-bs-dismiss="offcanvas" data-bs-target="#sidebar" aria-label="Close"></button>
+    </div>
+    <div class="rms-checker"></div>
+    <nav class="rms-nav">
+      <div class="rms-nav-label">Team</div>
+      {% for endpoint, label, icon in nav %}
+        {% if loop.index == 5 %}<div class="rms-nav-label">Engineering</div>{% endif %}
+        <a href="{{ url_for(endpoint) }}" class="rms-nav-link {% if section == endpoint %}active{% endif %}">
+          <i class="bi bi-{{ icon }}"></i><span>{{ label }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+    <div class="rms-nav-actions">
+      <div class="rms-nav-label">Quick add</div>
+      <button class="rms-quick" data-form="run"><i class="bi bi-stopwatch"></i> Log run</button>
+      <button class="rms-quick" data-form="setup"><i class="bi bi-sliders"></i> New setup</button>
+      <button class="rms-quick" data-form="event"><i class="bi bi-calendar-plus"></i> Add event</button>
+    </div>
+    <div class="rms-sidebar-foot">
+      <span class="badge rounded-pill text-bg-danger">ADMIN</span>
+      <small>LO206 · Ignite Sr</small>
+    </div>
+  </aside>
+
+  <main class="rms-main">
+    <header class="rms-topbar">
+      <button class="btn btn-icon d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-label="Menu"><i class="bi bi-list"></i></button>
+      <div class="flex-grow-1 min-w-0">
+        <div class="rms-eyebrow">{% block eyebrow %}RMS Racing{% endblock %}</div>
+        <h1 class="rms-title">{% block heading %}{{ self.title() }}{% endblock %}</h1>
+      </div>
+      <div class="d-flex gap-2 flex-wrap justify-content-end">{% block actions %}{% endblock %}</div>
+    </header>
+
+    <div class="rms-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }} alert-dismissible fade show rms-alert" role="alert">
+            {{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+</div>
+
+{% from "_forms.html" import form_modal %}
+{% set opts = form_options() %}
+{% for key in FORMS %}{{ form_modal(key, FORMS[key], opts) }}{% endfor %}
+<datalist id="tracks">{% for t in tracks %}<option value="{{ t }}">{% endfor %}</datalist>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

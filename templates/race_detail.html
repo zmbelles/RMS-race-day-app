@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% from "_forms.html" import add_btn, edit_btn, delete_btn %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ event.name }}{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('races') }}">Races</a> / {{ event.start_date|nice_date }}{% endblock %}
+{% block actions %}
+  {{ edit_btn('event', event, 'Edit', 'btn-outline-rms') }}
+  {{ add_btn('run', 'Log run', {'event_id': event.id, 'run_date': event.start_date}, 'btn-dark-rms') }}
+  {{ add_btn('result', 'Result', {'event_id': event.id}) }}
+{% endblock %}
+{% block content %}
+<div class="rms-card rms-card-body mb-3">
+  <div class="d-flex flex-wrap gap-4 align-items-center">
+    <div>{{ ui.event_chip(event) }}</div>
+    <div><div class="small-label">Track</div><div class="fw-semibold">{{ event.track or 'TBD' }}</div></div>
+    <div><div class="small-label">Dates</div><div class="fw-semibold">{{ event.start_date|nice_date }}{% if event.end_date and event.end_date != event.start_date %} – {{ event.end_date|nice_date }}{% endif %}</div></div>
+    <div><div class="small-label">Series</div><div class="fw-semibold">{{ event.series or '—' }}</div></div>
+    <div><div class="small-label">RMS entries</div><div class="fw-semibold">{{ results|length }}</div></div>
+  </div>
+  {% if event.notes %}<p class="mt-3 mb-0">{{ event.notes }}</p>{% endif %}
+</div>
+
+<div class="rms-card mb-3">
+  <div class="rms-card-head"><h2><i class="bi bi-trophy"></i> Results</h2></div>
+  <div class="table-responsive">
+    <table class="table table-rms">
+      <thead><tr><th>Finish</th><th>Driver</th><th>Class</th><th class="text-center">Qualified</th><th class="text-center">+/-</th><th>Setup</th><th class="text-end">Best lap</th><th class="text-end">Pts</th><th></th></tr></thead>
+      <tbody>
+      {% for r in results %}
+        <tr>
+          <td>{{ ui.pos(r) }}</td>
+          <td class="fw-semibold"><a class="text-reset" href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">{{ r.driver_name }}</a>{% if r.driver_number %} <span class="muted">#{{ r.driver_number }}</span>{% endif %}</td>
+          <td><span class="chip">{{ r.kart_class or '—' }}</span></td>
+          <td class="text-center">{{ r.qual_pos or '—' }}</td>
+          <td class="text-center">
+            {% if r.qual_pos and r.finish_pos and not r.dnf %}{% set g = r.qual_pos - r.finish_pos %}
+              <span class="{{ 'text-success' if g > 0 else 'text-danger' if g < 0 else 'muted' }} fw-semibold">{{ '+' if g > 0 }}{{ g }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          <td>{% if r.setup_id %}<a href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">{{ r.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="text-end lap">{{ r.best_lap|lap }}</td>
+          <td class="text-end">{{ r.points|int if r.points is not none else '—' }}</td>
+          <td class="actions">{{ edit_btn('result', r) }}{{ delete_btn('result', r.id, 'result') }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="9"><div class="empty"><i class="bi bi-flag"></i>No results entered.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="rms-card">
+  <div class="rms-card-head"><h2><i class="bi bi-stopwatch"></i> Sessions at this event</h2></div>
+  <div class="table-responsive">
+    <table class="table table-rms table-hover">
+      <thead><tr><th>Session</th><th>Driver</th><th>Setup</th><th>Track cond.</th><th class="text-end">Air / track °F</th><th class="text-end">Laps</th><th class="text-end">Best</th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+        <tr data-href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">
+          <td>{{ r.session or '—' }}<div class="small muted">{{ r.run_date|nice_date }}</div></td>
+          <td>{{ r.driver_name }}</td>
+          <td>{{ r.setup_name }} <span class="muted mono small">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span></td>
+          <td>{{ r.track_condition or '—' }}</td>
+          <td class="text-end">{{ ui.temps(r) }}</td>
+          <td class="text-end">{{ r.laps or '—' }}</td>
+          <td class="text-end lap">{{ r.best_lap|lap }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7"><div class="empty">No runs linked to this event. Pick it in the “Event” field when logging a run.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

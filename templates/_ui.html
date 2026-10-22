@@ -1,0 +1,21 @@
+{% macro avatar(name, number=None, cls='') -%}
+<span class="avatar {{ cls }}">{{ number if number else (name.split()|map('first')|join)[:2]|upper }}</span>
+{%- endmacro %}
+
+{% macro pos(r) -%}
+{% if r.dnf %}<span class="pos">DNF</span>
+{% elif r.finish_pos %}<span class="pos {{ 'p%d'|format(r.finish_pos) if r.finish_pos <= 3 else '' }}">{{ r.finish_pos }}</span>
+{% else %}<span class="muted">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro event_chip(e) -%}
+<span class="chip {{ 'red' if e.event_type == 'Race' else 'dark' if e.event_type == 'Test day' else '' }}">{{ e.event_type }}</span>
+{%- if e.status == 'Completed' %} <span class="chip green"><i class="bi bi-check2"></i> Done</span>
+{%- elif e.status == 'Cancelled' %} <span class="chip">Cancelled</span>{% endif %}
+{%- endmacro %}
+
+{% macro temps(r) -%}
+{% if r.air_temp is not none or r.track_temp is not none -%}
+<span class="text-nowrap">{{ r.air_temp|round|int if r.air_temp is not none else '—' }}° <span class="muted">/</span> {{ r.track_temp|round|int if r.track_temp is not none else '—' }}°</span>
+{%- else %}<span class="muted">—</span>{% endif %}
+{%- endmacro %}

@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "_forms.html" import add_btn, edit_btn, delete_btn %}
+{% import "_ui.html" as ui %}
+{% block title %}Races{% endblock %}
+{% block actions %}
+  {{ add_btn('result', 'Result', cls='btn-outline-rms') }}
+  {{ add_btn('event', 'Race', {'event_type': 'Race', 'status': 'Scheduled'}) }}
+{% endblock %}
+{% block content %}
+<ul class="nav nav-pills nav-pills-rms mb-3">
+  {% for key, label in [('all', 'All races'), ('upcoming', 'Upcoming'), ('completed', 'Completed')] %}
+    <li class="nav-item"><a class="nav-link {{ 'active' if show == key }}" href="{{ url_for('races', show=key) }}">{{ label }}</a></li>
+  {% endfor %}
+</ul>
+<div class="row g-3">
+{% for e in races %}
+  <div class="col-md-6 col-xxl-4">
+    <div class="rms-card hoverable h-100 d-flex flex-column">
+      <a href="{{ url_for('race_detail', event_id=e.id) }}" class="rms-card-body text-reset flex-grow-1">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>{{ ui.event_chip(e) }}</div>
+          <div class="small muted text-end">{{ e.start_date|nice_date }}</div>
+        </div>
+        <div class="fs-5 fw-bold lh-sm mb-1">{{ e.name }}</div>
+        <div class="muted small mb-3"><i class="bi bi-geo-alt"></i> {{ e.track or 'Track TBD' }}{% if e.series %} · {{ e.series }}{% endif %}</div>
+        <div class="d-flex gap-4">
+          <div><div class="small-label">RMS entries</div><div class="fs-5 fw-bold">{{ e.entries }}</div></div>
+          <div><div class="small-label">Best finish</div><div class="fs-5 fw-bold">{{ ('P%d'|format(e.best_finish)) if e.best_finish else '—' }}</div></div>
+          <div><div class="small-label">Fast lap</div><div class="fs-5 lap">{{ e.fast_lap|lap }}</div></div>
+        </div>
+        {% if e.top_driver and e.best_finish %}<div class="small mt-2"><i class="bi bi-trophy text-warning"></i> Top RMS: <strong>{{ e.top_driver }}</strong></div>{% endif %}
+      </a>
+      <div class="d-flex justify-content-end gap-1 px-3 pb-3">
+        {{ add_btn('result', 'Result', {'event_id': e.id}, 'btn-sm btn-outline-rms') }}
+        {{ edit_btn('event', e) }}{{ delete_btn('event', e.id, 'race and its results') }}
+      </div>
+    </div>
+  </div>
+{% else %}
+  <div class="col-12"><div class="rms-card"><div class="empty"><i class="bi bi-flag"></i>No races here yet.</div></div></div>
+{% endfor %}
+</div>
+{% endblock %}

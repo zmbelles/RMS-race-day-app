@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Compare setups{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('setups') }}">Setups</a> / Compare{% endblock %}
+{% block content %}
+<form class="rms-card rms-card-body filter-bar mb-3" method="get">
+  {% for i in range(3) %}
+    <select class="form-select" name="ids" style="min-width: 240px">
+      <option value="">Setup {{ i + 1 }}…</option>
+      {% for o in options %}<option value="{{ o.id }}" {{ 'selected' if ids|length > i and ids[i] == o.id }}>{{ o.driver_name }} — {{ o.name }}</option>{% endfor %}
+    </select>
+  {% endfor %}
+  <button class="btn btn-rms"><i class="bi bi-layout-split"></i> Compare</button>
+</form>
+
+{% if chosen|length >= 2 %}
+<div class="rms-card">
+  <div class="rms-card-head"><h2><i class="bi bi-layout-split"></i> Side by side</h2><span class="chip red">Differences highlighted</span></div>
+  <div class="table-responsive">
+    <table class="table table-rms compare-table">
+      <thead><tr><th></th>{% for s in chosen %}<th><a href="{{ url_for('setup_detail', setup_id=s.id) }}" class="text-reset text-normal">{{ s.name }}</a></th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for label, vals, differs in table %}
+        <tr><td>{{ label }}</td>{% for v in vals %}<td class="{{ 'diff' if differs }} {{ 'lap' if label == 'Best lap' }}">{{ v }}</td>{% endfor %}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="rms-card"><div class="empty"><i class="bi bi-layout-split"></i>Pick at least two setups to compare.</div></div>
+{% endif %}
+{% endblock %}

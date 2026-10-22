@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_forms.html" import add_btn, edit_btn, delete_btn %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ driver.name }}{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('drivers') }}">Drivers</a> / {{ '#' ~ driver.number if driver.number else 'Driver' }}{% endblock %}
+{% block actions %}
+  {{ edit_btn('driver', driver, 'Edit', 'btn-outline-rms') }}
+  {{ add_btn('kart', 'Kart', {'driver_id': driver.id}, 'btn-dark-rms') }}
+{% endblock %}
+{% block content %}
+{% set best = runs|selectattr('best_lap')|map(attribute='best_lap')|min if runs|selectattr('best_lap')|list else none %}
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="rms-card rms-card-body mb-3">
+      <div class="d-flex align-items-center gap-3 mb-3">
+        {{ ui.avatar(driver.name, driver.number, 'lg red') }}
+        <div>
+          <div class="fs-5 fw-bold">{{ driver.name }}</div>
+          <div class="muted small">{{ 'Active' if driver.active else 'Inactive' }}{% if driver.discord_id %} · <i class="bi bi-discord"></i> linked{% endif %}</div>
+        </div>
+      </div>
+      <div class="spec-grid">
+        <div class="spec highlight red"><div class="small-label">Wins</div><div class="v">{{ results|selectattr('finish_pos', 'equalto', 1)|list|length }}</div></div>
+        <div class="spec highlight"><div class="small-label">Races</div><div class="v">{{ results|length }}</div></div>
+        <div class="spec"><div class="small-label">Phone</div><div class="v">{{ driver.phone or '—' }}</div></div>
+        <div class="spec"><div class="small-label">Email</div><div class="v small">{{ driver.email or '—' }}</div></div>
+      </div>
+      {% if driver.notes %}<p class="mt-3 mb-0 small">{{ driver.notes }}</p>{% endif %}
+    </div>
+
+    <div class="rms-card">
+      <div class="rms-card-head"><h3><i class="bi bi-tools"></i> Karts</h3>{{ add_btn('kart', 'Add', {'driver_id': driver.id}, 'btn-sm btn-outline-rms') }}</div>
+      <div class="rms-card-body py-2">
+        {% for k in karts %}
+          <div class="d-flex align-items-center justify-content-between py-2 {% if not loop.first %}border-top{% endif %}">
+            <div><div class="fw-semibold">{{ k.name }}</div><div class="small muted">{{ k.chassis or '—' }} · {{ k.engine or '—' }}</div></div>
+            <div class="d-flex align-items-center gap-1"><span class="chip">{{ k.kart_class }}</span>{{ edit_btn('kart', k) }}</div>
+          </div>
+        {% else %}<div class="empty py-3">No karts yet.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="rms-card mb-3">
+      <div class="rms-card-head"><h3><i class="bi bi-sliders"></i> Setups</h3>
+        {% if karts %}{{ add_btn('setup', 'New setup', {'kart_id': karts[0].id}, 'btn-sm btn-rms') }}{% endif %}</div>
+      <div class="table-responsive">
+        <table class="table table-rms table-hover">
+          <thead><tr><th>Setup</th><th>Track</th><th>Gearing</th><th class="text-center">Runs</th><th class="text-end">Best</th></tr></thead>
+          <tbody>
+          {% for s in setups %}
+            <tr data-href="{{ url_for('setup_detail', setup_id=s.id) }}">
+              <td><div class="fw-semibold">{{ s.name }}</div><div class="small muted">{{ s.kart_name }} · {{ s.kart_class }}</div></td>
+              <td>{{ s.track or '—' }}</td>
+              <td class="mono">{{ s.front_sprocket }}/{{ s.rear_sprocket }} <span class="muted">({{ s|ratio }})</span></td>
+              <td class="text-center">{{ s.run_count }}</td>
+              <td class="text-end lap {{ 'best' if s.best_lap and s.best_lap == best }}">{{ s.best_lap|lap }}</td>
+            </tr>
+          {% else %}<tr><td colspan="5"><div class="empty">No setups yet.</div></td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="rms-card mb-3">
+      <div class="rms-card-head"><h3><i class="bi bi-flag"></i> Race results</h3></div>
+      <div class="table-responsive">
+        <table class="table table-rms table-hover">
+          <thead><tr><th>Race</th><th>Class</th><th class="text-center">Qual</th><th class="text-center">Finish</th><th class="text-end">Best lap</th></tr></thead>
+          <tbody>
+          {% for r in results %}
+            <tr data-href="{{ url_for('race_detail', event_id=r.event_id) }}">
+              <td><div class="fw-semibold">{{ r.event_name }}</div><div class="small muted">{{ r.start_date|nice_date }} · {{ r.track or '—' }}</div></td>
+              <td><span class="chip">{{ r.kart_class or '—' }}</span></td>
+              <td class="text-center">{{ r.qual_pos or '—' }}</td>
+              <td class="text-center">{{ ui.pos(r) }}</td>
+              <td class="text-end lap">{{ r.best_lap|lap }}</td>
+            </tr>
+          {% else %}<tr><td colspan="5"><div class="empty">No race results yet.</div></td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="rms-card">
+      <div class="rms-card-head"><h3><i class="bi bi-stopwatch"></i> Recent runs</h3><a class="small" href="{{ url_for('times', driver=driver.id) }}">All →</a></div>
+      <div class="table-responsive">
+        <table class="table table-rms">
+          <thead><tr><th>Date</th><th>Setup</th><th>Session</th><th>Tires</th><th class="text-end">Air / track</th><th class="text-end">Best</th></tr></thead>
+          <tbody>
+          {% for r in runs %}
+            <tr>
+              <td class="text-nowrap">{{ r.run_date|nice_date }}</td>
+              <td>{{ r.setup_name }}<div class="small muted">{{ r.track or '—' }}</div></td>
+              <td>{{ r.session or '—' }}</td>
+              <td class="small">{{ r.tire_name or '—' }}{% if r.tire_runs %} <span class="chip">run {{ r.tire_runs }}</span>{% endif %}</td>
+              <td class="text-end">{{ ui.temps(r) }}</td>
+              <td class="text-end lap {{ 'best' if r.best_lap == best }}">{{ r.best_lap|lap }}</td>
+            </tr>
+          {% else %}<tr><td colspan="6"><div class="empty">No runs yet.</div></td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
