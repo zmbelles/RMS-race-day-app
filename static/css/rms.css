@@ -49,17 +49,21 @@ a { text-decoration: none; }
     position: sticky; top: 0; height: 100vh;
     width: var(--rms-sidebar-w); flex: 0 0 var(--rms-sidebar-w);
     overflow-y: auto;
+    scrollbar-width: none; /* still scrolls; a visible scrollbar pushes the logo off-centre */
   }
+  .rms-sidebar::-webkit-scrollbar { display: none; }
 }
 @media (max-width: 991.98px) {
   .rms-sidebar { --bs-offcanvas-width: 272px; --bs-offcanvas-bg: var(--rms-black); }
   .rms-content { padding: 1rem 1rem 2.5rem; }
 }
 
-.rms-brand { display: flex; align-items: flex-start; justify-content: space-between; padding: 1.1rem 1.1rem .75rem; }
-.rms-brand-link { display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; min-width: 0; }
+.rms-brand { position: relative; padding: 1.1rem 1.25rem .75rem; }
+.rms-brand .btn-close { position: absolute; top: .75rem; right: .75rem; }
+.rms-brand-link { display: flex; flex-direction: column; align-items: center; gap: .35rem; }
 .rms-logo { width: 100%; max-width: 200px; height: auto; display: block; }
-.rms-brand-text { color: #fff; font-size: 1rem; font-weight: 700; letter-spacing: .32em; text-transform: uppercase; padding-left: .2rem; }
+/* letter-spacing adds trailing space after the last letter; pad the left to match so the text centres */
+.rms-brand-text { color: #fff; font-size: 1rem; font-weight: 700; letter-spacing: .32em; text-transform: uppercase; padding-left: .32em; }
 .rms-checker {
   height: 8px; margin: 0 1.25rem .75rem; opacity: .9; border-radius: 2px;
   background:
