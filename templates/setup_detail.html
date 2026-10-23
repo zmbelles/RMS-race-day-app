@@ -4,8 +4,6 @@
 {% block title %}{{ s.name }}{% endblock %}
 {% block eyebrow %}<a href="{{ url_for('setups') }}">Setups</a> / #{{ s.id }}{% endblock %}
 {% block actions %}
-  <form method="post" action="{{ url_for('setup_clone', setup_id=s.id) }}" class="d-inline">
-    <button class="btn btn-outline-rms"><i class="bi bi-copy"></i> Clone</button></form>
   {{ edit_btn('setup', s, 'Edit', 'btn-outline-rms') }}
   {{ add_btn('run', 'Log run', {'setup_id': s.id}) }}
 {% endblock %}
@@ -25,13 +23,13 @@
         {% else %}<span class="small muted">No driver is on this setup right now.</span>{% endfor %}
       </div>
       <div class="spec-grid">
-        <div class="spec highlight"><div class="small-label">SPR</div><div class="v">{{ s.front_sprocket }} / {{ s.rear_sprocket }}</div></div>
+        <div class="spec highlight"><div class="small-label">SPR</div><div class="v">{{ s.rear_sprocket }}T</div></div>
         <div class="spec highlight"><div class="small-label">Ratio</div><div class="v">{{ s|ratio }}</div></div>
         <div class="spec highlight red"><div class="small-label">Best lap</div><div class="v">{{ s.best_lap|lap }}</div></div>
       </div>
     </div>
     {% for title, icon, rows in [
-      ('Track width & tires', 'bullseye', [('FTW', s.front_width, 'in'), ('RTW', s.rear_width, 'in'), ('Tire', s.tire), ('Front PSI', s.front_psi), ('Rear PSI', s.rear_psi)]),
+      ('Track width & tires', 'bullseye', [('FTW', s.front_width, 'in'), ('RTW', s.rear_width, 'in'), ('Tire', s.tire), ('PSI', s.psi), ('Front sprocket', s.front_sprocket, 'T')]),
       ('Chassis', 'diagram-3', [('Axle', s.axle), ('Caster', s.caster), ('Camber', s.camber), ('Seat', s.seat_position), ('Ride height', s.ride_height)]),
       ('Weight & engine', 'speedometer', [('Total weight', s.total_weight, 'lb'), ('Ballast', s.ballast), ('Carb jetting', s.carb_jetting), ('Clutch', s.clutch)]),
     ] %}

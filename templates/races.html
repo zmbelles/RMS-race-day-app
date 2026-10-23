@@ -3,7 +3,6 @@
 {% import "_ui.html" as ui %}
 {% block title %}Races{% endblock %}
 {% block actions %}
-  {{ add_btn('result', 'Result', cls='btn-outline-rms') }}
   {{ add_btn('event', 'Race', {'event_type': 'Race', 'status': 'Scheduled'}) }}
 {% endblock %}
 {% block content %}
@@ -31,7 +30,7 @@
         {% if e.top_driver and e.best_finish %}<div class="small mt-2"><i class="bi bi-trophy text-warning"></i> Top RMS: <strong>{{ e.top_driver }}</strong></div>{% endif %}
       </a>
       <div class="d-flex justify-content-end gap-1 px-3 pb-3">
-        {{ add_btn('result', 'Result', {'event_id': e.id}, 'btn-sm btn-outline-rms') }}
+        <a class="btn btn-sm btn-outline-rms" href="{{ url_for('race_detail', event_id=e.id, enter=1) }}"><i class="bi bi-list-ol"></i> Results</a>
         {{ edit_btn('event', e) }}{{ delete_btn('event', e.id, 'race and its results') }}
       </div>
     </div>

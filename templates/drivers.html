@@ -21,7 +21,7 @@
               <td class="num">{{ d.number }}</td>
               <td><div class="fw-semibold text-nowrap">{{ d.name }}</div><span class="chip">{{ d.kart_class }}</span>{% if not d.active %} <span class="small muted">inactive</span>{% endif %}</td>
               <td class="small text-nowrap">{{ d.kart_name }}</td>
-              <td class="small"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">{{ d.setup_name }}</a></td>
+              <td class="small"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">#{{ d.setup_id }}</a></td>
               {{ ui.lineup_cells(d) }}
               <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
               <td class="text-center">{{ d.race_count }}</td>

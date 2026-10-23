@@ -56,7 +56,7 @@
             <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}">
               <td class="num">{{ d.number }}</td>
               <td class="fw-semibold text-nowrap">{{ d.name }}</td>
-              <td class="small">{{ d.setup_name }}</td>
+              <td class="small"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">#{{ d.setup_id }}</a></td>
               {{ ui.lineup_cells(d) }}
             </tr>
           {% else %}

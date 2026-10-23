@@ -30,8 +30,9 @@ def main(src_path):
     created = 0
     for s in src.execute("SELECT * FROM setups ORDER BY updated_at"):
         values = {c: (s[c] if c in s.keys() else None) for c in commands.TUNING}
-        sid, new = get_or_insert("setups", {"name": s["name"], **values},
-                                 notes=s["notes"], created_at=s["created_at"], updated_at=s["updated_at"])
+        values["psi"] = s["front_psi"] if s["front_psi"] is not None else s["rear_psi"]
+        notes = " · ".join(x for x in (f"Bot setup “{s['name']}”", s["notes"]) if x)
+        sid, new = get_or_insert("setups", values, notes=notes, created_at=s["created_at"], updated_at=s["updated_at"])
         created += new
         setup_map[s["id"]] = sid
         if s["track"]:

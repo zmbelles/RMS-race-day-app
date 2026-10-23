@@ -36,7 +36,7 @@ TIRE_LIFE_RUNS = int(os.getenv("TIRE_LIFE_RUNS", "20"))
 
 DRIVER_SQL = """
 SELECT d.*, s.name AS setup_name, s.front_sprocket, s.rear_sprocket, s.front_width, s.rear_width,
-       s.front_psi, s.rear_psi, s.tire, k.name AS kart_name, k.chassis, k.engine,
+       s.psi, s.tire, k.name AS kart_name, k.chassis, k.engine,
        (SELECT MIN(best_lap) FROM runs WHERE driver_id = d.id) AS best_lap,
        (SELECT COUNT(*) FROM results WHERE driver_id = d.id) AS race_count,
        (SELECT COUNT(*) FROM results WHERE driver_id = d.id AND finish_pos = 1 AND dnf = 0) AS wins,
@@ -146,14 +146,12 @@ FORMS = {
         F("notes", "Notes", type="textarea", col=12),
     ]),
     "setup": dict(table="setups", title="Setup", size="xl", fields=[
-        F("name", "Setup name", placeholder="Leave blank to name it from the numbers", col=12, section="Basics"),
-        F("front_sprocket", "Front sprocket (T)", type="number", required=True, col=3, section="Gearing & track width"),
+        F("front_sprocket", "Front sprocket (T)", type="number", required=True, default=17, col=3, section="Gearing & track width"),
         F("rear_sprocket", "Rear sprocket (T)", type="number", required=True, col=3),
         F("front_width", "Front track width (in)", type="number", step="0.01", col=3),
         F("rear_width", "Rear track width (in)", type="number", step="0.01", col=3),
-        F("tire", "Tire", col=6, section="Tires", placeholder="Hoosier R80"),
-        F("front_psi", "Front PSI", type="number", step="0.1", col=3),
-        F("rear_psi", "Rear PSI", type="number", step="0.1", col=3),
+        F("tire", "Tire", col=8, section="Tires", placeholder="Hoosier R80"),
+        F("psi", "Tire pressure (PSI)", type="number", step="0.1", col=4),
         F("axle", "Axle", col=4, section="Chassis"),
         F("caster", "Caster", col=4),
         F("camber", "Camber", col=4),
@@ -296,7 +294,12 @@ def save(key):
             values["track_id"] = query("SELECT track_id FROM events WHERE id = ?", (values["event_id"],), one=True)[0]
     if key == "setup":
         values["updated_at"] = now()
-        values["name"] = values["name"] or commands.auto_name(values)
+        if not old:
+            match = commands.find_setup(conn, values)
+            if match:
+                flash(Markup(f'That setup already exists: <a href="{url_for("setup_detail", setup_id=match["id"])}">'
+                             f'{escape(match["name"])}</a>'), "warning")
+                return back()
 
     try:
         if old:
@@ -455,8 +458,49 @@ def race_detail(event_id):
                     "res.finish_pos IS NULL, res.finish_pos", (event_id,))
     runs = query(RUN_SQL + " WHERE r.event_id = ? ORDER BY r.run_date, r.session, r.best_lap", (event_id,))
     target = query("SELECT target_lap FROM tracks WHERE id = ?", (event["track_id"],), one=True)
-    return render_template("race_detail.html", event=event, results=results, runs=runs,
-                           target=target["target_lap"] if target else None)
+    # One grid row per active driver (plus anyone already entered), prefilled with their result.
+    by_driver = {r["driver_id"]: r for r in results}
+    grid = [(d, by_driver.get(d["id"])) for d in query(
+        "SELECT * FROM drivers WHERE active = 1 OR id IN (SELECT driver_id FROM results WHERE event_id = ?) "
+        "ORDER BY CAST(number AS INTEGER), number", (event_id,))]
+    setups = query("SELECT id, name FROM setups ORDER BY rear_sprocket, name")
+    return render_template("race_detail.html", event=event, results=results, runs=runs, grid=grid, setups=setups,
+                           target=target["target_lap"] if target else None, enter=request.args.get("enter") == "1")
+
+
+@app.post("/races/<int:event_id>/results")
+def race_results_save(event_id):
+    """Save the whole results grid. A row with no qualifying, finish, lap or DNF clears that driver's result."""
+    query("SELECT id FROM events WHERE id = ?", (event_id,), one=True) or abort(404)
+    conn = db.get_db()
+    form = request.form
+    saved = cleared = 0
+    try:
+        for driver_id in form.getlist("driver_id", type=int):
+            get = lambda name: (form.get(f"{name}_{driver_id}") or "").strip()
+            num = lambda name, cast=int: cast(float(get(name))) if get(name) else None
+            row = dict(qual_pos=num("qual"), finish_pos=num("finish"), best_lap=parse_lap(get("lap")),
+                       points=num("points", float), dnf=1 if get("dnf") else 0,
+                       setup_id=num("setup"), kart_class=get("class") or None)
+            existing = query("SELECT id FROM results WHERE event_id = ? AND driver_id = ?", (event_id, driver_id), one=True)
+            if not any(row[k] is not None for k in ("qual_pos", "finish_pos", "best_lap")) and not row["dnf"]:
+                if existing:
+                    conn.execute("DELETE FROM results WHERE id = ?", (existing["id"],))
+                    cleared += 1
+                continue
+            if existing:
+                conn.execute(f"UPDATE results SET {', '.join(f'{k} = ?' for k in row)} WHERE id = ?",
+                             (*row.values(), existing["id"]))
+            else:
+                db.insert(conn, "results", event_id=event_id, driver_id=driver_id, **row)
+            saved += 1
+    except ValueError as exc:
+        conn.rollback()
+        flash(f"Nothing saved: {exc}", "danger")
+        return redirect(url_for("race_detail", event_id=event_id, enter=1))
+    conn.commit()
+    flash(f"Saved {saved} result{'s' if saved != 1 else ''}" + (f", cleared {cleared}" if cleared else ""), "success")
+    return redirect(url_for("race_detail", event_id=event_id))
 
 
 @app.get("/schedule")
@@ -512,23 +556,10 @@ def setup_detail(setup_id):
     return render_template("setup_detail.html", s=setup, runs=runs, drivers=drivers, changes=changes)
 
 
-@app.post("/setups/<int:setup_id>/clone")
-def setup_clone(setup_id):
-    src = query("SELECT * FROM setups WHERE id = ?", (setup_id,), one=True) or abort(404)
-    values = {k: src[k] for k in src.keys() if k != "id"}
-    values["name"] = request.form.get("name") or f"{src['name']} (copy)"
-    values["created_at"] = values["updated_at"] = now()
-    conn = db.get_db()
-    new_id = db.insert(conn, "setups", **values)
-    conn.commit()
-    flash(f"Cloned to “{values['name']}”", "success")
-    return redirect(url_for("setup_detail", setup_id=new_id))
-
-
 COMPARE_ROWS = [
     ("Used by", "used_by"), ("Front sprocket", "front_sprocket"), ("Rear sprocket", "rear_sprocket"),
     ("Gear ratio", "ratio"), ("Front track width", "front_width"), ("Rear track width", "rear_width"), ("Tire", "tire"),
-    ("Front PSI", "front_psi"), ("Rear PSI", "rear_psi"), ("Axle", "axle"), ("Caster", "caster"),
+    ("PSI", "psi"), ("Axle", "axle"), ("Caster", "caster"),
     ("Camber", "camber"), ("Seat", "seat_position"), ("Ride height", "ride_height"),
     ("Weight", "total_weight"), ("Ballast", "ballast"), ("Carb jetting", "carb_jetting"), ("Clutch", "clutch"),
     ("Best lap", "best_lap"), ("Runs", "run_count"),

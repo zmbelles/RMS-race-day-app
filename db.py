@@ -8,7 +8,7 @@ import time
 from flask import g
 
 DB_PATH = os.getenv("RMS_DB_PATH", os.path.join(os.path.dirname(__file__), "rms_race_day.db"))
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 CLASSES = [c.strip() for c in os.getenv("KART_CLASSES", "LO206,Ignite Sr").split(",") if c.strip()]
 SESSIONS = ["Practice", "Qualifying", "Heat", "Prefinal", "Final"]
@@ -18,6 +18,14 @@ EVENT_STATUSES = ["Scheduled", "Completed", "Cancelled"]
 
 # Setups and karts stand on their own. A driver always points at exactly one of each,
 # so race-day commands ("24 SPR 61") move the driver to a matching or new setup.
+# Setups aren't named: the label is built from the numbers, e.g. "60T · FTW 1.5 · RTW 0.5 · 30 psi".
+SETUP_LABEL = (
+    "rear_sprocket || 'T'"
+    " || CASE WHEN front_width IS NULL THEN '' ELSE ' · FTW ' || printf('%g', front_width) END"
+    " || CASE WHEN rear_width IS NULL THEN '' ELSE ' · RTW ' || printf('%g', rear_width) END"
+    " || CASE WHEN psi IS NULL THEN '' ELSE ' · ' || printf('%g', psi) || ' psi' END"
+)
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tracks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,14 +38,12 @@ CREATE TABLE IF NOT EXISTS tracks (
 );
 CREATE TABLE IF NOT EXISTS setups (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    name           TEXT    NOT NULL,
     front_sprocket INTEGER NOT NULL,
     rear_sprocket  INTEGER NOT NULL,
     front_width    REAL,
     rear_width     REAL,
     tire           TEXT,
-    front_psi      REAL,
-    rear_psi       REAL,
+    psi            REAL,
     axle           TEXT,
     caster         TEXT,
     camber         TEXT,
@@ -49,7 +55,8 @@ CREATE TABLE IF NOT EXISTS setups (
     clutch         TEXT,
     notes          TEXT,
     created_at     INTEGER NOT NULL,
-    updated_at     INTEGER NOT NULL
+    updated_at     INTEGER NOT NULL,
+    name           TEXT GENERATED ALWAYS AS ({label}) VIRTUAL
 );
 CREATE TABLE IF NOT EXISTS karts (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -142,6 +149,16 @@ CREATE INDEX IF NOT EXISTS idx_runs_driver ON runs(driver_id);
 CREATE INDEX IF NOT EXISTS idx_runs_setup ON runs(setup_id);
 CREATE INDEX IF NOT EXISTS idx_results_event ON results(event_id);
 CREATE INDEX IF NOT EXISTS idx_changes_driver ON setup_changes(driver_id);
+""".replace("{label}", SETUP_LABEL)
+
+# v2 -> v3: one tire pressure for all four tires, and setups lose their names.
+MIGRATE_V3 = f"""
+ALTER TABLE setups ADD COLUMN psi REAL;
+UPDATE setups SET psi = COALESCE(front_psi, rear_psi);
+ALTER TABLE setups DROP COLUMN front_psi;
+ALTER TABLE setups DROP COLUMN rear_psi;
+ALTER TABLE setups DROP COLUMN name;
+ALTER TABLE setups ADD COLUMN name TEXT GENERATED ALWAYS AS ({SETUP_LABEL}) VIRTUAL;
 """
 
 
@@ -156,6 +173,11 @@ def init_db(path=DB_PATH):
     conn = connect(path)
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     has_tables = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'drivers'").fetchone()[0]
+    if has_tables and version == 2:
+        shutil.copy(path, path.replace(".db", ".v2.bak.db"))
+        with conn:
+            conn.executescript(MIGRATE_V3)
+        version = 3
     if has_tables and version < SCHEMA_VERSION:
         # v1 tied setups to karts and karts to drivers. Keep the old file and start fresh.
         conn.close()

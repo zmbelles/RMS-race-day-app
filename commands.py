@@ -2,10 +2,10 @@
 
     <number> <KEYWORD> <value> [<KEYWORD> <value> ...]
 
-    SPR  sprocket          65 (rear) · 17/65 (front/rear)
+    SPR  rear sprocket      65   (the front is fixed)
     FTW  front track width  1.5
     RTW  rear track width   0.75
-    PSI  tire pressure      30 (all four) · 30/32 (front/rear)
+    PSI  tire pressure      30   (same on all four tires)
 
 Values can be relative: '24 SPR +1', '9 PSI -0.5'. Separate several commands with ';' or new
 lines. 'UNDO' reverts the most recent change.
@@ -20,34 +20,31 @@ import db
 from db import fmt_num
 
 # Columns that define what a setup physically is. Two setups with equal values here are the same setup.
-TUNING = ["front_sprocket", "rear_sprocket", "front_width", "rear_width", "tire", "front_psi", "rear_psi",
+TUNING = ["front_sprocket", "rear_sprocket", "front_width", "rear_width", "tire", "psi",
           "axle", "caster", "camber", "seat_position", "ride_height", "total_weight", "ballast",
           "carb_jetting", "clutch"]
 
 LABELS = {"front_sprocket": "Front sprocket", "rear_sprocket": "Rear sprocket", "front_width": "Front track width",
-          "rear_width": "Rear track width", "front_psi": "Front PSI", "rear_psi": "Rear PSI"}
+          "rear_width": "Rear track width", "psi": "PSI"}
 
 
 @dataclass
 class Keyword:
     label: str
-    single: tuple      # fields set by a single value
-    pair: tuple        # fields set by 'a/b'
+    field: str
     kind: type
     limits: tuple      # hard limits: outside is an error
     typical: tuple = None  # outside is a warning
 
 
 KEYWORDS = {
-    "SPR": Keyword("Sprocket", ("rear_sprocket",), ("front_sprocket", "rear_sprocket"), int, (8, 99), (58, 63)),
-    "FTW": Keyword("Front track width", ("front_width",), (), float, (0, 100)),
-    "RTW": Keyword("Rear track width", ("rear_width",), (), float, (0, 100)),
-    "PSI": Keyword("Tire pressure", ("front_psi", "rear_psi"), ("front_psi", "rear_psi"), float, (0, 80), (28, 36)),
+    "SPR": Keyword("Rear sprocket", "rear_sprocket", int, (8, 99), (58, 63)),
+    "FTW": Keyword("Front track width", "front_width", float, (0, 100)),
+    "RTW": Keyword("Rear track width", "rear_width", float, (0, 100)),
+    "PSI": Keyword("Tire pressure", "psi", float, (0, 80), (28, 36)),
 }
-TYPICAL_FIELDS = {"rear_sprocket": KEYWORDS["SPR"].typical, "front_psi": KEYWORDS["PSI"].typical,
-                  "rear_psi": KEYWORDS["PSI"].typical}
 
-VALUE_RE = re.compile(r"^([+-])?(\d+(?:\.\d+)?)(?:/(\d+(?:\.\d+)?))?$")
+VALUE_RE = re.compile(r"^([+-])?(\d+(?:\.\d+)?)$")
 GLUED_RE = re.compile(r"^([A-Za-z]+)([+-]?\d.*)$")
 
 
@@ -107,38 +104,29 @@ def parse(line):
 def new_values(current, pairs):
     """Apply keyword pairs to a setup row. Returns (values, warnings)."""
     values = {c: current[c] for c in TUNING}
+    warnings = []
     for kw, raw in pairs:
-        spec = KEYWORDS[kw]
+        spec, col = KEYWORDS[kw], KEYWORDS[kw].field
         m = VALUE_RE.match(raw)
         if not m:
             raise CommandError(f"{kw} value '{raw}' isn't a number")
-        sign, first, second = m.groups()
-        if second is not None:
-            if not spec.pair or sign:
-                raise CommandError(f"{kw} takes a single value" if not spec.pair else f"{kw} pairs can't be relative")
-            targets = dict(zip(spec.pair, (first, second)))
-        else:
-            targets = {f: first for f in spec.single}
-        for col, text in targets.items():
-            num = float(text)
-            if spec.kind is int:
-                if not num.is_integer():
-                    raise CommandError(f"{kw} needs a whole number of teeth")
-                num = int(num)
-            if sign:
-                if values[col] is None:
-                    raise CommandError(f"{LABELS[col]} isn't set yet, so '{raw}' has nothing to add to")
-                num = values[col] + (num if sign == "+" else -num)
-            lo, hi = spec.limits
-            if not lo <= num <= hi:
-                raise CommandError(f"{LABELS[col]} {fmt_num(num)} is outside {lo}–{hi}")
-            values[col] = round(num, 3) if spec.kind is float else num
-    warnings = []
-    for col, (lo, hi) in TYPICAL_FIELDS.items():
-        v = values[col]
-        if v is not None and v != current[col] and not lo <= v <= hi:
-            unit = "T" if "sprocket" in col else " psi"
-            warnings.append(f"{LABELS[col]} {fmt_num(v)}{unit} is outside the usual {lo}–{hi}{unit}")
+        sign, text = m.groups()
+        num = float(text)
+        if spec.kind is int:
+            if not num.is_integer():
+                raise CommandError(f"{kw} needs a whole number of teeth")
+            num = int(num)
+        if sign:
+            if values[col] is None:
+                raise CommandError(f"{LABELS[col]} isn't set yet, so '{raw}' has nothing to add to")
+            num = values[col] + (num if sign == "+" else -num)
+        lo, hi = spec.limits
+        if not lo <= num <= hi:
+            raise CommandError(f"{LABELS[col]} {fmt_num(num)} is outside {lo}–{hi}")
+        values[col] = round(num, 3) if spec.kind is float else num
+        if spec.typical and num != current[col] and not spec.typical[0] <= num <= spec.typical[1]:
+            unit = "T" if kw == "SPR" else " psi"
+            warnings.append(f"{LABELS[col]} {fmt_num(num)}{unit} is outside the usual {spec.typical[0]}–{spec.typical[1]}{unit}")
     return values, warnings
 
 
@@ -146,16 +134,6 @@ def find_setup(conn, values):
     where = " AND ".join(f"{c} IS ?" for c in TUNING)
     return conn.execute(f"SELECT * FROM setups WHERE {where} ORDER BY id LIMIT 1",
                         [values[c] for c in TUNING]).fetchone()
-
-
-def auto_name(v):
-    parts = [f"{v['front_sprocket']}/{v['rear_sprocket']}"]
-    if v["front_width"] is not None or v["rear_width"] is not None:
-        parts.append(f"FTW {fmt_num(v['front_width'])} · RTW {fmt_num(v['rear_width'])}")
-    if v["front_psi"] is not None:
-        psi = fmt_num(v["front_psi"]) if v["front_psi"] == v["rear_psi"] else f"{fmt_num(v['front_psi'])}/{fmt_num(v['rear_psi'])}"
-        parts.append(f"{psi} psi")
-    return " · ".join(parts)
 
 
 def apply_line(conn, line):
@@ -169,7 +147,7 @@ def apply_line(conn, line):
     out = Outcome(line=line, driver={"id": driver["id"], "name": driver["name"], "number": driver["number"]})
     if not pairs:
         out.kind, out.setup_id, out.setup_name = "noop", current["id"], current["name"]
-        out.message = f"#{number} {driver['name']} is on “{current['name']}”"
+        out.message = f"#{number} {driver['name']} is on {current['name']}"
         return out
 
     values, out.warnings = new_values(current, pairs)
@@ -182,14 +160,14 @@ def apply_line(conn, line):
     match = find_setup(conn, values)
     if match:
         target_id, out.kind, out.setup_name = match["id"], "switch", match["name"]
-        out.message = f"#{number} → existing setup “{match['name']}”"
+        out.message = f"#{number} → existing setup {match['name']}"
     else:
-        name = auto_name(values)
         ts = db.now()
-        target_id = db.insert(conn, "setups", name=name, created_at=ts, updated_at=ts,
-                              notes=f"Made from “{current['name']}” with “{line}”", **values)
-        out.kind, out.setup_name = "create", name
-        out.message = f"#{number} → new setup “{name}”"
+        target_id = db.insert(conn, "setups", created_at=ts, updated_at=ts,
+                              notes=f"Made from {current['name']} with “{line}”", **values)
+        out.kind = "create"
+        out.setup_name = conn.execute("SELECT name FROM setups WHERE id = ?", (target_id,)).fetchone()[0]
+        out.message = f"#{number} → new setup {out.setup_name}"
     out.setup_id = target_id
     conn.execute("UPDATE drivers SET setup_id = ? WHERE id = ?", (target_id, driver["id"]))
     db.insert(conn, "setup_changes", driver_id=driver["id"], command=line, from_setup_id=current["id"],
@@ -223,7 +201,7 @@ def undo(conn, change_id=None):
     back = conn.execute("SELECT name FROM setups WHERE id = ?", (change["from_setup_id"],)).fetchone()
     return Outcome(line="UNDO", kind="undo", driver={"id": change["driver_id"], "name": change["name"], "number": change["number"]},
                    setup_id=change["from_setup_id"], setup_name=back["name"],
-                   message=f"Undid “{change['command']}”: #{change['number']} back on “{back['name']}”")
+                   message=f"Undid “{change['command']}”: #{change['number']} back on {back['name']}")
 
 
 def run(conn, text, dry_run=False):

@@ -32,7 +32,7 @@
             <tr data-href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">
               <td class="text-nowrap">{{ r.run_date|nice_date }}</td>
               <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
-              <td><div class="fw-semibold">{{ r.track_name or '—' }}</div><div class="small muted">{{ r.setup_name or '—' }}{% if r.setup_id %} · <span class="mono">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span>{% endif %}</div></td>
+              <td><div class="fw-semibold">{{ r.track_name or '—' }}</div><div class="small muted">{{ r.setup_name or '—' }}{% if r.setup_id %} · <span class="mono">{{ r.rear_sprocket }}T</span>{% endif %}</div></td>
               <td>{{ r.session or '—' }}</td>
               <td class="small">{{ r.tire_name or '—' }}{% if r.tire_runs %}<div><span class="chip">run {{ r.tire_runs }}</span></div>{% endif %}</td>
               <td class="small">{{ r.track_condition or '—' }}</td>

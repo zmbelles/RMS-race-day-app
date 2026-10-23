@@ -55,15 +55,15 @@
     <div class="rms-card mb-3">
       <div class="rms-card-head">
         <h3><i class="bi bi-sliders"></i> Current setup</h3>
-        <a class="small" href="{{ url_for('setup_detail', setup_id=setup.id) }}">{{ setup.name }} →</a>
+        <a class="small" href="{{ url_for('setup_detail', setup_id=setup.id) }}">Setup #{{ setup.id }} →</a>
       </div>
       <div class="rms-card-body">
         <div class="spec-grid lineup">
           {% for label, kw, value in [
-            ('Sprocket', 'SPR', setup.front_sprocket ~ '/' ~ setup.rear_sprocket),
+            ('Rear sprocket', 'SPR', setup.rear_sprocket ~ 'T'),
             ('Front track width', 'FTW', setup.front_width|num),
             ('Rear track width', 'RTW', setup.rear_width|num),
-            ('Tire pressure', 'PSI', setup.front_psi|num ~ ('' if setup.rear_psi == setup.front_psi else '/' ~ setup.rear_psi|num))] %}
+            ('Tire pressure', 'PSI', setup.psi|num)] %}
             <a href="#" class="spec highlight text-reset" data-cmd="{{ driver.number }} {{ kw }} " title="Change with {{ kw }}">
               <div class="small-label">{{ label }} · {{ kw }}</div><div class="v">{{ value }}</div></a>
           {% endfor %}

@@ -6,7 +6,7 @@
 {% block actions %}
   {{ edit_btn('event', event, 'Edit', 'btn-outline-rms') }}
   {{ add_btn('run', 'Log run', {'event_id': event.id, 'run_date': event.start_date}, 'btn-dark-rms') }}
-  {{ add_btn('result', 'Result', {'event_id': event.id}) }}
+  <button type="button" class="btn btn-rms" data-bs-toggle="modal" data-bs-target="#results-grid"><i class="bi bi-list-ol"></i> Enter results</button>
 {% endblock %}
 {% block content %}
 <div class="rms-card rms-card-body mb-3">
@@ -21,7 +21,8 @@
 </div>
 
 <div class="rms-card mb-3">
-  <div class="rms-card-head"><h2><i class="bi bi-trophy"></i> Results</h2></div>
+  <div class="rms-card-head"><h2><i class="bi bi-trophy"></i> Results</h2>
+    <button type="button" class="btn btn-sm btn-outline-rms" data-bs-toggle="modal" data-bs-target="#results-grid"><i class="bi bi-pencil-square"></i> Edit all</button></div>
   <div class="table-responsive">
     <table class="table table-rms">
       <thead><tr><th>Finish</th><th>Driver</th><th>Class</th><th class="text-center">Qualified</th><th class="text-center">+/-</th><th>Setup</th><th class="text-end">Best lap</th><th class="text-end">Pts</th><th></th></tr></thead>
@@ -37,13 +38,13 @@
               <span class="{{ 'text-success' if g > 0 else 'text-danger' if g < 0 else 'muted' }} fw-semibold">{{ '+' if g > 0 }}{{ g }}</span>
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
-          <td>{% if r.setup_id %}<a href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">{{ r.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="small text-nowrap">{% if r.setup_id %}<a href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">{{ r.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
           <td class="text-end text-nowrap"><span class="lap">{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(target) }}</td>
           <td class="text-end">{{ r.points|int if r.points is not none else '—' }}</td>
           <td class="actions">{{ edit_btn('result', r) }}{{ delete_btn('result', r.id, 'result') }}</td>
         </tr>
       {% else %}
-        <tr><td colspan="9"><div class="empty"><i class="bi bi-flag"></i>No results entered.</div></td></tr>
+        <tr><td colspan="9"><div class="empty"><i class="bi bi-flag"></i>No results entered. Use <strong>Enter results</strong> to add everyone at once.</div></td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -60,7 +61,7 @@
         <tr data-href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">
           <td>{{ r.session or '—' }}<div class="small muted">{{ r.run_date|nice_date }}</div></td>
           <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
-          <td>{{ r.setup_name or '—' }}{% if r.setup_id %} <span class="muted mono small">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span>{% endif %}</td>
+          <td>{{ r.setup_name or '—' }}{% if r.setup_id %} <span class="muted mono small">{{ r.rear_sprocket }}T</span>{% endif %}</td>
           <td>{{ r.track_condition or '—' }}</td>
           <td class="text-end">{{ ui.temps(r) }}</td>
           <td class="text-end">{{ r.laps or '—' }}</td>
@@ -73,4 +74,51 @@
     </table>
   </div>
 </div>
+<div class="modal fade rms-modal" id="results-grid" tabindex="-1" aria-hidden="true" {% if enter %}data-autoshow{% endif %}>
+  <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-xl">
+    <form class="modal-content" method="post" action="{{ url_for('race_results_save', event_id=event.id) }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Results · {{ event.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <p class="small muted px-3 pt-3 mb-2">Fill in the drivers who raced. Leave a row blank to skip that driver (or clear a result already entered).</p>
+        <div class="table-responsive">
+          <table class="table table-rms results-grid mb-0">
+            <thead><tr><th>Driver</th><th>Qual</th><th>Finish</th><th>Best lap</th><th>Pts</th><th class="text-center">DNF</th><th>Setup</th></tr></thead>
+            <tbody>
+            {% for d, r in grid %}
+              <tr>
+                <td class="text-nowrap">
+                  <input type="hidden" name="driver_id" value="{{ d.id }}">
+                  <input type="hidden" name="class_{{ d.id }}" value="{{ r.kart_class if r else d.kart_class }}">
+                  <span class="num-sm">#{{ d.number }}</span> {{ d.name }}
+                </td>
+                <td><input class="form-control form-control-sm" name="qual_{{ d.id }}" type="number" min="1" inputmode="numeric" value="{{ r.qual_pos if r and r.qual_pos is not none }}"></td>
+                <td><input class="form-control form-control-sm" name="finish_{{ d.id }}" type="number" min="1" inputmode="numeric" value="{{ r.finish_pos if r and r.finish_pos is not none }}"></td>
+                <td><input class="form-control form-control-sm" name="lap_{{ d.id }}" inputmode="decimal" placeholder="{{ (target|lap) if target else '45.123' }}"
+                           pattern="^\s*(\d+:)?\d+(\.\d+)?\s*$" value="{{ (r.best_lap|lap) if r and r.best_lap is not none }}"></td>
+                <td><input class="form-control form-control-sm" name="points_{{ d.id }}" type="number" step="0.5" value="{{ (r.points|num) if r and r.points is not none }}"></td>
+                <td class="text-center"><input class="form-check-input" type="checkbox" name="dnf_{{ d.id }}" value="1" {{ 'checked' if r and r.dnf }}></td>
+                <td>
+                  {% set chosen = r.setup_id if r else d.setup_id %}
+                  <select class="form-select form-select-sm" name="setup_{{ d.id }}">
+                    <option value="">—</option>
+                    {% for s in setups %}<option value="{{ s.id }}" {{ 'selected' if s.id == chosen }}>{{ s.name }}</option>{% endfor %}
+                  </select>
+                </td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-rms"><i class="bi bi-check2"></i> Save results</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
+

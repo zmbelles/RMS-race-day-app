@@ -19,13 +19,13 @@ TRACKS = [  # name, city, state, good lap
 ]
 DRIVERS = [("Zachary Belles", "24"), ("Leonardo Rojas", "9"), ("Jesus Garza", "13"),
            ("Colin Cox", "88"), ("Logan Matusik", "517")]
-SETUPS = [  # name, front/rear sprocket, FTW, RTW, front/rear psi
-    ("Baseline", 17, 60, 1.5, 0.5, 30, 30),
-    ("Tight track", 17, 62, 1.25, 0.5, 31, 31),
-    ("Fast track", 17, 59, 1.5, 0.75, 30, 32),
-    ("Hot day", 17, 61, 1.75, 0.5, 28, 29),
-    ("Cold & green", 17, 60, 1.25, 0.25, 34, 34),
-    ("Wet", 17, 58, 1.0, 0.0, 36, 36),
+SETUPS = [  # rear sprocket, FTW, RTW, psi (front sprocket is fixed at 17)
+    (60, 1.5, 0.5, 30),
+    (62, 1.25, 0.5, 31),
+    (59, 1.5, 0.75, 32),
+    (61, 1.75, 0.5, 28),
+    (60, 1.25, 0.25, 34),
+    (58, 1.0, 0.0, 36),
 ]
 DRIVER_SETUP = {"24": 0, "9": 0, "13": 1, "88": 2, "517": 3}  # index into SETUPS; 24 and 9 share one
 
@@ -47,11 +47,11 @@ def main():
     targets = {tid: t[3] for tid, t in zip(tracks, TRACKS)}
 
     ts = db.now()
-    setups = [ins("setups", name=name, front_sprocket=fs, rear_sprocket=rs, front_width=ftw, rear_width=rtw,
-                  tire="Hoosier R80", front_psi=fp, rear_psi=rp, axle="Hard", caster="Neutral", camber="0°",
+    setups = [ins("setups", front_sprocket=17, rear_sprocket=rs, front_width=ftw, rear_width=rtw,
+                  tire="Hoosier R80", psi=psi, axle="Hard", caster="Neutral", camber="0°",
                   seat_position="Std", ride_height="Mid", total_weight=380, carb_jetting="#110",
                   clutch="Margay 4,500 rpm", created_at=ts, updated_at=ts)
-              for name, fs, rs, ftw, rtw, fp, rp in SETUPS]
+              for rs, ftw, rtw, psi in SETUPS]
 
     drivers = []
     for name, number in DRIVERS:

@@ -38,10 +38,10 @@
 {%- endmacro %}
 
 {% macro lineup_cells(d) -%}
-<td data-cmd="{{ d.number }} SPR " title="Click to change sprocket">{{ d.front_sprocket }}/{{ d.rear_sprocket }}</td>
+<td data-cmd="{{ d.number }} SPR " title="Click to change rear sprocket">{{ d.rear_sprocket }}</td>
 <td data-cmd="{{ d.number }} FTW " title="Click to change front track width">{{ d.front_width|num }}</td>
 <td data-cmd="{{ d.number }} RTW " title="Click to change rear track width">{{ d.rear_width|num }}</td>
-<td data-cmd="{{ d.number }} PSI " title="Click to change tire pressure">{{ d.front_psi|num }}{% if d.rear_psi != d.front_psi %}/{{ d.rear_psi|num }}{% endif %}</td>
+<td data-cmd="{{ d.number }} PSI " title="Click to change tire pressure">{{ d.psi|num }}</td>
 {%- endmacro %}
 
 {% macro used_by(s) -%}

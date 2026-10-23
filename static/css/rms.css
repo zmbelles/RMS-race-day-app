@@ -294,3 +294,10 @@ a { text-decoration: none; }
 .change-row:first-child { border-top: 0; }
 .change-row code { color: var(--rms-text); background: var(--rms-bg); padding: .1rem .4rem; border-radius: 6px; white-space: nowrap; }
 .lineup td:nth-child(4) { min-width: 150px; }
+.results-grid td { padding: .4rem .5rem; }
+.results-grid td:first-child { padding-left: 1rem; }
+.results-grid input[type=number] { width: 72px; }
+.results-grid input[name^=lap_] { width: 96px; }
+.results-grid input[name^=points_] { width: 72px; }
+.results-grid select { min-width: 220px; }
+.num-sm { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 800; color: var(--rms-red); font-size: 1.1rem; }

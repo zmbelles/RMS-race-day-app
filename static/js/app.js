@@ -175,3 +175,5 @@
 })();
 
 document.querySelectorAll('[data-bs-toggle="popover"]').forEach((el) => new bootstrap.Popover(el));
+
+document.querySelectorAll(".modal[data-autoshow]").forEach((el) => bootstrap.Modal.getOrCreateInstance(el).show());

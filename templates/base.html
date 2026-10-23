@@ -65,12 +65,12 @@
       <form class="rms-cmd" method="post" action="{{ url_for('run_command') }}" data-cmd-form autocomplete="off">
         <input type="hidden" name="next" value="{{ request.full_path }}">
         <i class="bi bi-terminal rms-cmd-icon"></i>
-        <input class="form-control" name="q" placeholder="24 SPR 61 · 9 PSI 30/32 · 13 FTW 1.5" aria-label="Race-day command"
+        <input class="form-control" name="q" placeholder="24 SPR 61 · 9 PSI 30 · 13 FTW 1.5" aria-label="Race-day command"
                spellcheck="false" autocapitalize="characters">
         <kbd class="rms-cmd-kbd d-none d-xl-inline">/</kbd>
         <button type="button" class="rms-cmd-help" data-bs-toggle="popover" data-bs-placement="bottom" data-bs-html="true"
                 data-bs-trigger="focus" title="Race-day commands" aria-label="Command help"
-                data-bs-content="<code>24 SPR 61</code> rear sprocket<br><code>24 SPR 17/61</code> front/rear<br><code>24 FTW 1.5</code> front track width<br><code>24 RTW 0.75</code> rear track width<br><code>24 PSI 30</code> all tires · <code>30/32</code> front/rear<br><code>24 SPR +1</code> relative change<br><code>24 SPR 61 PSI 30; 9 RTW 1</code> several at once<br><code>UNDO</code> revert the last change<hr class='my-2'>Moves the driver to a matching setup, or makes a new one."><i class="bi bi-question-circle"></i></button>
+                data-bs-content="<code>24 SPR 61</code> rear sprocket<br><code>24 FTW 1.5</code> front track width<br><code>24 RTW 0.75</code> rear track width<br><code>24 PSI 30</code> tire pressure<br><code>24 SPR +1</code> relative change<br><code>24 SPR 61 PSI 30; 9 RTW 1</code> several at once<br><code>UNDO</code> revert the last change<hr class='my-2'>Moves the driver to a matching setup, or makes a new one."><i class="bi bi-question-circle"></i></button>
         <div class="rms-cmd-preview" data-cmd-preview hidden></div>
       </form>
       <div class="d-flex gap-2 flex-wrap justify-content-end">{% block actions %}{% endblock %}</div>

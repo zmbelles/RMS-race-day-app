@@ -32,11 +32,10 @@ The black bar at the top of every page takes shorthand (press `/` to jump to it)
 
 | Command | Does |
 |---|---|
-| `24 SPR 65` | #24's rear sprocket → 65 |
-| `24 SPR 17/65` | front / rear sprocket |
+| `24 SPR 65` | #24's rear sprocket → 65 (the front is fixed) |
 | `24 FTW 1.5` | front track width |
 | `24 RTW 0.75` | rear track width |
-| `24 PSI 30` · `24 PSI 30/32` | all tires · front / rear |
+| `24 PSI 30` | tire pressure (same on all four) |
 | `24 SPR +1` · `24 PSI -0.5` | relative change |
 | `24 SPR 61 PSI 30; 9 RTW 1` | several changes, several drivers |
 | `UNDO` | revert the most recent change |
@@ -45,7 +44,7 @@ Keywords are case-insensitive. As you type, a preview shows exactly what will ch
 outside the usual range (sprocket 58–63T, Hoosier 28–36 psi). Enter applies it.
 
 A change never edits a setup in place, because other drivers may share it. The driver moves to an existing setup with
-exactly the new values, or the app creates one (named from its numbers) and moves them to it. Every change is logged on
+exactly the new values, or the app creates one and moves them to it. Setups aren't named; they're labelled by their numbers, e.g. `60T · FTW 1.5 · RTW 0.5 · 30 psi`. Every change is logged on
 the Dashboard, Drivers page and driver page with an undo button. Undoing a change that created a setup deletes that
 setup if nothing else uses it.
 
@@ -67,7 +66,7 @@ Clicking a SPR / FTW / RTW / PSI value in a lineup starts the command for that d
 | Races | Race cards with RMS entries, best finish and fast lap. The race page has results (qualifying → finish +/-) and every session logged at that event |
 | Schedule | Upcoming races, practice days and test days grouped by month (*Show past* for history), plus the track list with good laps |
 | Garage | Karts (chassis, engine, seal #, who drives it) and tire sets with a run-count life bar |
-| Setups | Setup cards showing who uses each one, gear calculator, clone, side-by-side compare with differences highlighted |
+| Setups | Setup cards showing who uses each one, gear calculator, side-by-side compare with differences highlighted. Adding a setup that already exists points you to the existing one |
 | Times | Run log with filters (driver, class, track, session, date), gap to the track's good lap, and a leaderboard per track and class |
 
 Logging a run adds one run to the chosen tire set and records the set's age on that run. Editing or deleting the run updates the count.
