@@ -16,7 +16,7 @@
         <h2>{{ next_event.name }}</h2>
         <div class="d-flex flex-wrap gap-3 align-items-end justify-content-between mt-3">
           <div>
-            <div><i class="bi bi-geo-alt"></i> {{ next_event.track or 'Track TBD' }}</div>
+            <div><i class="bi bi-geo-alt"></i> {{ next_event.track_name or 'Track TBD' }}</div>
             <div class="text-white-50"><i class="bi bi-calendar3"></i> {{ next_event.start_date|nice_date }}</div>
           </div>
           <div class="countdown">{% if days_out <= 0 %}TODAY{% else %}{{ days_out }} <small>DAYS</small>{% endif %}</div>
@@ -46,19 +46,39 @@
   </div>
 
   <div class="col-xl-8">
-    <div class="rms-card h-100">
+    <div class="rms-card mb-3">
+      <div class="rms-card-head"><h2><i class="bi bi-grid-3x3-gap"></i> Lineup</h2><span class="small muted d-none d-md-inline">Click a value to change it</span></div>
+      <div class="table-responsive">
+        <table class="table table-rms table-hover lineup">
+          <thead><tr><th>#</th><th>Driver</th><th>Setup</th><th>SPR</th><th>FTW</th><th>RTW</th><th>PSI</th></tr></thead>
+          <tbody>
+          {% for d in lineup %}
+            <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}">
+              <td class="num">{{ d.number }}</td>
+              <td class="fw-semibold text-nowrap">{{ d.name }}</td>
+              <td class="small">{{ d.setup_name }}</td>
+              {{ ui.lineup_cells(d) }}
+            </tr>
+          {% else %}
+            <tr><td colspan="7"><div class="empty">No active drivers.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="rms-card">
       <div class="rms-card-head"><h2><i class="bi bi-stopwatch"></i> Recent runs</h2><a href="{{ url_for('times') }}" class="small">All times →</a></div>
       <div class="table-responsive">
         <table class="table table-rms table-hover">
-          <thead><tr><th>Date</th><th>Driver</th><th>Setup</th><th>Session</th><th class="text-end">Best lap</th><th class="text-end">Temp</th></tr></thead>
+          <thead><tr><th>Date</th><th>Driver</th><th>Track / setup</th><th>Session</th><th class="text-end">Best lap</th><th class="text-end">Temp</th></tr></thead>
           <tbody>
           {% for r in recent %}
-            <tr data-href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">
+            <tr data-href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">
               <td class="text-nowrap">{{ r.run_date|nice_date }}</td>
-              <td>{{ r.driver_name }}</td>
-              <td><div class="fw-semibold">{{ r.setup_name }}</div><div class="small muted">{{ r.track or '—' }} · {{ r.kart_class }}</div></td>
+              <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
+              <td><div class="fw-semibold">{{ r.track_name or '—' }}</div><div class="small muted">{{ r.setup_name or '—' }}</div></td>
               <td>{{ r.session or '—' }}</td>
-              <td class="text-end lap">{{ r.best_lap|lap }}</td>
+              <td class="text-end text-nowrap"><span class="lap">{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(r.target_lap) }}</td>
               <td class="text-end">{{ ui.temps(r) }}</td>
             </tr>
           {% else %}
@@ -72,6 +92,14 @@
 
   <div class="col-xl-4">
     <div class="rms-card mb-3">
+      <div class="rms-card-head"><h2><i class="bi bi-clock-history"></i> Setup changes</h2><a href="{{ url_for('drivers') }}" class="small">All →</a></div>
+      <div class="rms-card-body py-2">
+        {% for c in changes %}{{ ui.change_row(c) }}{% else %}
+          <div class="empty py-3">Type <code>24 SPR 61</code> in the command bar.</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="rms-card mb-3">
       <div class="rms-card-head"><h2><i class="bi bi-calendar3"></i> Coming up</h2><a href="{{ url_for('schedule') }}" class="small">Schedule →</a></div>
       <div class="rms-card-body py-2">
         {% for e in upcoming %}
@@ -79,7 +107,7 @@
             <span class="chip {{ 'red' if e.event_type == 'Race' else '' }}">{{ e.event_type }}</span>
             <div class="min-w-0 flex-grow-1">
               <div class="fw-semibold text-truncate">{{ e.name }}</div>
-              <div class="small muted">{{ e.start_date|nice_date }} · {{ e.track or 'TBD' }}</div>
+              <div class="small muted">{{ e.start_date|nice_date }} · {{ e.track_name or 'TBD' }}</div>
             </div>
           </div>
         {% else %}
@@ -93,7 +121,7 @@
       <div class="rms-card-body py-2">
         {% for t in worn %}
           <div class="d-flex justify-content-between align-items-center py-2 {% if not loop.first %}border-top{% endif %}">
-            <div><div class="fw-semibold">{{ t.name }}</div><div class="small muted">{{ t.driver_name }} · {{ t.kart_name }}</div></div>
+            <div><div class="fw-semibold">{{ t.name }}</div><div class="small muted">{{ t.kart_name }}</div></div>
             <span class="chip {{ 'red' if t.runs >= tire_life else 'amber' }}">{{ t.runs }} runs</span>
           </div>
         {% endfor %}
@@ -110,7 +138,7 @@
           <thead><tr><th>Track</th><th>Class</th><th>Driver</th><th class="text-end">Lap</th></tr></thead>
           <tbody>
           {% for r in records %}
-            <tr><td class="fw-semibold">{{ r.track or '—' }}</td><td><span class="chip">{{ r.kart_class }}</span></td><td>{{ r.driver_name }}</td><td class="text-end lap best">{{ r.best_lap|lap }}</td></tr>
+            <tr><td class="fw-semibold">{{ r.track_name or '—' }}</td><td><span class="chip">{{ r.kart_class }}</span></td><td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td><td class="text-end text-nowrap"><span class="lap best">{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(r.target_lap) }}</td></tr>
           {% else %}
             <tr><td colspan="4"><div class="empty">No laps logged yet.</div></td></tr>
           {% endfor %}

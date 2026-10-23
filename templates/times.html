@@ -6,11 +6,11 @@
 {% block content %}
 <form class="rms-card rms-card-body filter-bar mb-3" method="get">
   <select class="form-select" name="driver"><option value="">All drivers</option>
-    {% for d in drivers %}<option value="{{ d.id }}" {{ 'selected' if f.driver == d.id|string }}>{{ d.name }}</option>{% endfor %}</select>
+    {% for d in drivers %}<option value="{{ d.id }}" {{ 'selected' if f.driver == d.id|string }}>#{{ d.number }} {{ d.name }}</option>{% endfor %}</select>
   <select class="form-select" name="kart_class"><option value="">All classes</option>
     {% for c in classes %}<option {{ 'selected' if f.kart_class == c }}>{{ c }}</option>{% endfor %}</select>
   <select class="form-select" name="track"><option value="">All tracks</option>
-    {% for t in tracks %}<option {{ 'selected' if f.track == t }}>{{ t }}</option>{% endfor %}</select>
+    {% for t in tracks %}<option value="{{ t.id }}" {{ 'selected' if f.track == t.id|string }}>{{ t.name }}</option>{% endfor %}</select>
   <select class="form-select" name="session"><option value="">All sessions</option>
     {% for x in sessions %}<option {{ 'selected' if f.session == x }}>{{ x }}</option>{% endfor %}</select>
   <div class="input-group" style="width: auto"><span class="input-group-text">Since</span><input class="form-control" type="date" name="since" value="{{ f.since }}"></div>
@@ -21,23 +21,24 @@
 <div class="row g-3">
   <div class="col-xxl-8">
     <div class="rms-card">
-      <div class="rms-card-head"><h2><i class="bi bi-stopwatch"></i> Run log <span class="chip">{{ runs|length }}</span></h2></div>
+      <div class="rms-card-head"><h2><i class="bi bi-stopwatch"></i> Run log <span class="chip">{{ runs|length }}</span></h2>
+        <span class="small muted">± vs the track's good lap</span></div>
       <div class="table-responsive">
         <table class="table table-rms table-hover">
-          <thead><tr><th>Date</th><th>Driver</th><th>Setup</th><th>Session</th><th>Tires</th><th>Cond.</th><th class="text-end">Air / track °F</th><th class="text-end">Laps</th><th class="text-end">Best</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Driver</th><th>Track / setup</th><th>Session</th><th>Tires</th><th>Cond.</th><th class="text-end">Air / track °F</th><th class="text-end">Laps</th><th class="text-end">Best</th><th></th></tr></thead>
           <tbody>
           {% for r in runs %}
-            {% set pb = r.best_lap is not none and best_by_setup.get(r.setup_id) == r.best_lap %}
-            <tr data-href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">
+            {% set pb = r.best_lap is not none and best.get((r.driver_id, r.track_id)) == r.best_lap %}
+            <tr data-href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">
               <td class="text-nowrap">{{ r.run_date|nice_date }}</td>
-              <td class="text-nowrap">{{ r.driver_name }}</td>
-              <td><div class="fw-semibold">{{ r.setup_name }}</div><div class="small muted">{{ r.track or '—' }} · {{ r.kart_class }} · <span class="mono">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span></div></td>
+              <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
+              <td><div class="fw-semibold">{{ r.track_name or '—' }}</div><div class="small muted">{{ r.setup_name or '—' }}{% if r.setup_id %} · <span class="mono">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span>{% endif %}</div></td>
               <td>{{ r.session or '—' }}</td>
               <td class="small">{{ r.tire_name or '—' }}{% if r.tire_runs %}<div><span class="chip">run {{ r.tire_runs }}</span></div>{% endif %}</td>
               <td class="small">{{ r.track_condition or '—' }}</td>
               <td class="text-end">{{ ui.temps(r) }}</td>
               <td class="text-end">{{ r.laps or '—' }}</td>
-              <td class="text-end lap {{ 'best' if pb }}">{% if pb %}<i class="bi bi-trophy-fill" title="Best on this setup"></i> {% endif %}{{ r.best_lap|lap }}</td>
+              <td class="text-end text-nowrap"><span class="lap {{ 'best' if pb }}">{% if pb %}<i class="bi bi-trophy-fill" title="Driver's best at this track"></i> {% endif %}{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(r.target_lap) }}</td>
               <td class="actions">{{ edit_btn('run', r) }}{{ delete_btn('run', r.id, 'run') }}</td>
             </tr>
           {% else %}
@@ -57,9 +58,9 @@
           <tbody>
           {% for r in records %}
             <tr>
-              <td><div class="fw-semibold">{{ r.track or '—' }}</div><span class="chip">{{ r.kart_class }}</span></td>
-              <td>{{ r.driver_name }}<div class="small muted">{{ r.setup_name }} · {{ r.run_date|nice_date }}</div></td>
-              <td class="text-end lap best">{{ r.best_lap|lap }}</td>
+              <td><div class="fw-semibold">{{ r.track_name }}</div><span class="chip">{{ r.kart_class }}</span></td>
+              <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}<div class="small muted">{{ r.run_date|nice_date }}</div></td>
+              <td class="text-end text-nowrap"><span class="lap best">{{ r.best_lap|lap }}</span><div>{{ r.best_lap|delta(r.target_lap) }}</div></td>
             </tr>
           {% else %}
             <tr><td colspan="3"><div class="empty">No laps yet.</div></td></tr>

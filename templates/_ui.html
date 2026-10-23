@@ -19,3 +19,31 @@
 <span class="text-nowrap">{{ r.air_temp|round|int if r.air_temp is not none else '—' }}° <span class="muted">/</span> {{ r.track_temp|round|int if r.track_temp is not none else '—' }}°</span>
 {%- else %}<span class="muted">—</span>{% endif %}
 {%- endmacro %}
+
+{% macro change_row(c, show_driver=True) -%}
+<div class="change-row">
+  <code>{{ c.command }}</code>
+  <div class="min-w-0 flex-grow-1 small">
+    {% if show_driver %}<a class="fw-semibold text-reset" href="{{ url_for('driver_detail', driver_id=c.driver_id) }}">#{{ c.driver_number }} {{ c.driver_name }}</a> · {% endif %}
+    {% if c.to_setup_id %}<a href="{{ url_for('setup_detail', setup_id=c.to_setup_id) }}">{{ c.to_name }}</a>{% else %}<span class="muted">deleted setup</span>{% endif %}
+    {% if c.created_setup %}<span class="chip green ms-1">new</span>{% endif %}
+    <div class="muted">{{ c.created_at|ago }}{% if c.from_name %} · from {{ c.from_name }}{% endif %}</div>
+  </div>
+  {% if c.undoable %}
+  <form method="post" action="{{ url_for('undo_change', change_id=c.id) }}">
+    <button class="btn btn-sm btn-outline-rms" title="Undo"><i class="bi bi-arrow-counterclockwise"></i></button>
+  </form>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% macro lineup_cells(d) -%}
+<td data-cmd="{{ d.number }} SPR " title="Click to change sprocket">{{ d.front_sprocket }}/{{ d.rear_sprocket }}</td>
+<td data-cmd="{{ d.number }} FTW " title="Click to change front track width">{{ d.front_width|num }}</td>
+<td data-cmd="{{ d.number }} RTW " title="Click to change rear track width">{{ d.rear_width|num }}</td>
+<td data-cmd="{{ d.number }} PSI " title="Click to change tire pressure">{{ d.front_psi|num }}{% if d.rear_psi != d.front_psi %}/{{ d.rear_psi|num }}{% endif %}</td>
+{%- endmacro %}
+
+{% macro used_by(s) -%}
+{% for n in (s.used_by or '').split(',') if n %}<span class="chip dark me-1">#{{ n }}</span>{% else %}<span class="small muted">Not in use</span>{% endfor %}
+{%- endmacro %}

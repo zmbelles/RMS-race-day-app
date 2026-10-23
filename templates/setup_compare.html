@@ -6,7 +6,7 @@
   {% for i in range(3) %}
     <select class="form-select" name="ids" style="min-width: 240px">
       <option value="">Setup {{ i + 1 }}…</option>
-      {% for o in options %}<option value="{{ o.id }}" {{ 'selected' if ids|length > i and ids[i] == o.id }}>{{ o.driver_name }} — {{ o.name }}</option>{% endfor %}
+      {% for o in options %}<option value="{{ o.id }}" {{ 'selected' if ids|length > i and ids[i] == o.id }}>{{ o.name }}{% if o.used_by %} (#{{ o.used_by.replace(",", ", #") }}){% endif %}</option>{% endfor %}
     </select>
   {% endfor %}
   <button class="btn btn-rms"><i class="bi bi-layout-split"></i> Compare</button>

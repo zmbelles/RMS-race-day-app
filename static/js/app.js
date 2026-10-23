@@ -45,6 +45,17 @@
       if (el.type === "checkbox") el.checked = !!Number(v);
       else el.value = el.hasAttribute("data-lap") && has ? fmtLap(v) : (v ?? "");
     });
+    if (!record) {
+      // A prefilled driver/event brings its setup, kart, track… unless those were given too.
+      form.querySelectorAll("select").forEach((sel) => {
+        const fill = sel.value && sel.selectedOptions[0]?.dataset.fill;
+        if (!fill) return;
+        Object.entries(JSON.parse(fill)).forEach(([name, value]) => {
+          const el = form.elements[name];
+          if (el && value != null && !(name in values)) el.value = value;
+        });
+      });
+    }
     applyFilters(form);
     // Selecting the filter first can blank a valid child value — restore it.
     form.querySelectorAll("select[data-filter-by]").forEach((el) => {
@@ -65,7 +76,16 @@
 
   document.addEventListener("change", (e) => {
     const form = e.target.form;
-    if (form?.dataset.formKey) applyFilters(form);
+    if (!form?.dataset.formKey) return;
+    // Picking a driver/event pre-fills related fields (their setup, kart, track…)
+    const fill = e.target.selectedOptions?.[0]?.dataset.fill;
+    if (fill) {
+      Object.entries(JSON.parse(fill)).forEach(([name, value]) => {
+        const el = form.elements[name];
+        if (el && value != null) el.value = value;
+      });
+    }
+    applyFilters(form);
   });
   document.addEventListener("input", (e) => {
     if (e.target.form?.dataset.formKey === "setup") liveRatio(e.target.form);
@@ -79,7 +99,7 @@
   // Clickable table rows
   document.addEventListener("click", (e) => {
     const row = e.target.closest("tr[data-href]");
-    if (row && !e.target.closest("a,button,form,input,select")) location.href = row.dataset.href;
+    if (row && !e.target.closest("a,button,form,input,select,[data-cmd]")) location.href = row.dataset.href;
   });
 
   // Gear calculator widget
@@ -99,3 +119,59 @@
     render();
   }
 })();
+
+// Race-day command bar: live preview while typing, Enter to apply, "/" to focus.
+(() => {
+  const form = document.querySelector("[data-cmd-form]");
+  if (!form) return;
+  const input = form.querySelector("input[name=q]");
+  const panel = form.querySelector("[data-cmd-preview]");
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const verbs = { create: ["New setup", "plus-circle", "green"], switch: ["Existing setup", "arrow-left-right", "dark"],
+                  noop: ["No change", "dash-circle", ""], undo: ["Undo", "arrow-counterclockwise", "dark"], error: ["Error", "x-circle", "red"] };
+  let timer, seq = 0;
+
+  const render = (items) => {
+    if (!items.length) { panel.hidden = true; return; }
+    panel.innerHTML = items.map((o) => {
+      const [label, icon, tone] = verbs[o.kind] || verbs.noop;
+      const who = o.driver ? `<strong>#${esc(o.driver.number)} ${esc(o.driver.name)}</strong>` : "";
+      const changes = o.changes.map(([l, a, b]) => `<span class="cmd-change">${esc(l)} ${esc(a)} → <strong>${esc(b)}</strong></span>`).join("");
+      const target = o.ok && o.kind !== "noop" && o.setup_name ? `<div class="small muted">→ ${esc(o.setup_name)}</div>` : "";
+      const msg = !o.ok || (o.kind === "noop") || o.kind === "undo" ? `<div class="small ${o.ok ? "muted" : "text-danger"}">${esc(o.message)}</div>` : "";
+      const warns = o.warnings.map((w) => `<div class="small cmd-warn"><i class="bi bi-exclamation-triangle"></i> ${esc(w)}</div>`).join("");
+      return `<div class="cmd-item"><span class="chip ${tone}"><i class="bi bi-${icon}"></i> ${label}</span>
+        <div class="min-w-0"><div>${who} ${changes}</div>${target}${msg}${warns}</div></div>`;
+    }).join("") + `<div class="cmd-foot">Enter to apply · Esc to clear</div>`;
+    panel.hidden = false;
+  };
+
+  const preview = () => {
+    const q = input.value.trim();
+    if (!q) { render([]); return; }
+    const mine = ++seq;
+    fetch(`/cmd/preview?q=${encodeURIComponent(q)}`).then((r) => r.json()).then((items) => { if (mine === seq) render(items); });
+  };
+
+  input.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(preview, 150); });
+  input.addEventListener("focus", preview);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { input.value = ""; render([]); input.blur(); }
+  });
+  document.addEventListener("click", (e) => { if (!form.contains(e.target)) panel.hidden = true; });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "/" && !e.target.closest("input, textarea, select, [contenteditable]")) { e.preventDefault(); input.focus(); }
+  });
+  // Clicking a value on the lineup starts a command for that driver: "24 SPR "
+  document.addEventListener("click", (e) => {
+    const cell = e.target.closest("[data-cmd]");
+    if (!cell) return;
+    e.preventDefault();
+    input.value = cell.dataset.cmd;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    preview();
+  });
+})();
+
+document.querySelectorAll('[data-bs-toggle="popover"]').forEach((el) => new bootstrap.Popover(el));

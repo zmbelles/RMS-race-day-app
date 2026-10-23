@@ -2,7 +2,7 @@
 {% from "_forms.html" import add_btn, edit_btn, delete_btn %}
 {% import "_ui.html" as ui %}
 {% block title %}{{ s.name }}{% endblock %}
-{% block eyebrow %}<a href="{{ url_for('setups') }}">Setups</a> / {{ s.driver_name }}{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('setups') }}">Setups</a> / #{{ s.id }}{% endblock %}
 {% block actions %}
   <form method="post" action="{{ url_for('setup_clone', setup_id=s.id) }}" class="d-inline">
     <button class="btn btn-outline-rms"><i class="bi bi-copy"></i> Clone</button></form>
@@ -11,26 +11,28 @@
 {% endblock %}
 {% block content %}
 {% macro spec(label, value, unit='') %}
-  <div class="spec"><div class="small-label">{{ label }}</div><div class="v">{{ value if value not in (none, '') else '—' }}{% if unit and value not in (none, '') %} {{ unit }}{% endif %}</div></div>
+  <div class="spec"><div class="small-label">{{ label }}</div><div class="v">{{ value|num if value not in (none, '') else '—' }}{% if unit and value not in (none, '') %} {{ unit }}{% endif %}</div></div>
 {% endmacro %}
+{% if drivers|length > 1 %}
+  <div class="alert alert-warning rms-alert small"><i class="bi bi-people"></i> {{ drivers|length }} drivers share this setup. Editing it changes it for all of them; use the command bar to change one driver.</div>
+{% endif %}
 <div class="row g-3">
   <div class="col-xl-5">
     <div class="rms-card rms-card-body mb-3">
+      <div class="small-label mb-2">Used by</div>
       <div class="d-flex flex-wrap gap-2 mb-3">
-        <span class="chip red">{{ s.kart_class }}</span>
-        <a class="chip" href="{{ url_for('driver_detail', driver_id=s.driver_id) }}"><i class="bi bi-person"></i> {{ s.driver_name }}</a>
-        <span class="chip"><i class="bi bi-tools"></i> {{ s.kart_name }}</span>
-        <span class="chip"><i class="bi bi-geo-alt"></i> {{ s.track or 'Any track' }}</span>
+        {% for d in drivers %}<a class="chip dark" href="{{ url_for('driver_detail', driver_id=d.id) }}">#{{ d.number }} {{ d.name }}</a>
+        {% else %}<span class="small muted">No driver is on this setup right now.</span>{% endfor %}
       </div>
       <div class="spec-grid">
-        <div class="spec highlight"><div class="small-label">Gearing</div><div class="v">{{ s.front_sprocket }} / {{ s.rear_sprocket }}</div></div>
+        <div class="spec highlight"><div class="small-label">SPR</div><div class="v">{{ s.front_sprocket }} / {{ s.rear_sprocket }}</div></div>
         <div class="spec highlight"><div class="small-label">Ratio</div><div class="v">{{ s|ratio }}</div></div>
         <div class="spec highlight red"><div class="small-label">Best lap</div><div class="v">{{ s.best_lap|lap }}</div></div>
       </div>
     </div>
     {% for title, icon, rows in [
-      ('Track & tires', 'bullseye', [('Front width', s.front_width, 'in'), ('Rear width', s.rear_width, 'in'), ('Tire', s.tire), ('Front PSI', s.front_psi), ('Rear PSI', s.rear_psi), ('Conditions', s.conditions)]),
-      ('Chassis', 'diagram-3', [('Chassis', s.chassis), ('Axle', s.axle), ('Caster', s.caster), ('Camber', s.camber), ('Seat', s.seat_position), ('Ride height', s.ride_height)]),
+      ('Track width & tires', 'bullseye', [('FTW', s.front_width, 'in'), ('RTW', s.rear_width, 'in'), ('Tire', s.tire), ('Front PSI', s.front_psi), ('Rear PSI', s.rear_psi)]),
+      ('Chassis', 'diagram-3', [('Axle', s.axle), ('Caster', s.caster), ('Camber', s.camber), ('Seat', s.seat_position), ('Ride height', s.ride_height)]),
       ('Weight & engine', 'speedometer', [('Total weight', s.total_weight, 'lb'), ('Ballast', s.ballast), ('Carb jetting', s.carb_jetting), ('Clutch', s.clutch)]),
     ] %}
     <div class="rms-card mb-3">
@@ -42,22 +44,22 @@
   </div>
 
   <div class="col-xl-7">
-    <div class="rms-card">
+    <div class="rms-card mb-3">
       <div class="rms-card-head"><h3><i class="bi bi-stopwatch"></i> Runs <span class="chip">{{ runs|length }}</span></h3>
         <a class="small" href="{{ url_for('setup_compare', ids=[s.id]) }}">Compare with… →</a></div>
       <div class="table-responsive">
         <table class="table table-rms">
-          <thead><tr><th>Date</th><th>Session</th><th>Tires</th><th>Track</th><th class="text-end">Air / track °F</th><th class="text-end">Laps</th><th class="text-end">Best</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Driver</th><th>Track</th><th>Session</th><th>Tires</th><th class="text-end">Air / track</th><th class="text-end">Best</th><th></th></tr></thead>
           <tbody>
           {% for r in runs %}
             <tr>
-              <td class="text-nowrap">{{ r.run_date|nice_date }}{% if r.event_name %}<div class="small muted text-truncate" style="max-width: 160px">{{ r.event_name }}</div>{% endif %}</td>
+              <td class="text-nowrap">{{ r.run_date|nice_date }}</td>
+              <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
+              <td>{{ r.track_name or '—' }}</td>
               <td>{{ r.session or '—' }}</td>
               <td class="small">{{ r.tire_name or '—' }}{% if r.tire_runs %} <span class="chip">run {{ r.tire_runs }}</span>{% endif %}</td>
-              <td class="small">{{ r.track_condition or '—' }}</td>
               <td class="text-end">{{ ui.temps(r) }}</td>
-              <td class="text-end">{{ r.laps or '—' }}</td>
-              <td class="text-end lap {{ 'best' if r.best_lap and r.best_lap == s.best_lap }}">{% if r.best_lap and r.best_lap == s.best_lap %}<i class="bi bi-trophy-fill"></i> {% endif %}{{ r.best_lap|lap }}</td>
+              <td class="text-end text-nowrap"><span class="lap {{ 'best' if r.best_lap and r.best_lap == s.best_lap }}">{% if r.best_lap and r.best_lap == s.best_lap %}<i class="bi bi-trophy-fill"></i> {% endif %}{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(r.target_lap) }}</td>
               <td class="actions">{{ edit_btn('run', r) }}{{ delete_btn('run', r.id, 'run') }}</td>
             </tr>
             {% if r.notes %}<tr><td colspan="8" class="small muted pt-0 border-top-0">↳ {{ r.notes }}</td></tr>{% endif %}
@@ -68,8 +70,14 @@
         </table>
       </div>
     </div>
-    <div class="text-end mt-3">
-      {{ delete_btn('setup', s.id, 'setup and all its runs', url_for('setups'), 'btn btn-sm btn-link text-danger') }}
+    {% if changes %}
+    <div class="rms-card mb-3">
+      <div class="rms-card-head"><h3><i class="bi bi-clock-history"></i> Changes to and from this setup</h3></div>
+      <div class="rms-card-body py-2">{% for c in changes %}{{ ui.change_row(c) }}{% endfor %}</div>
+    </div>
+    {% endif %}
+    <div class="text-end">
+      {{ delete_btn('setup', s.id, 'setup', url_for('setups'), 'btn btn-sm btn-link text-danger') }}
     </div>
   </div>
 </div>

@@ -1,52 +1,89 @@
 """RMS Race Day — admin web app for drivers, races, schedule, garage, setups and lap times."""
 import datetime as dt
 import os
+import sqlite3
 from collections import OrderedDict
 
-from flask import Flask, abort, flash, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, jsonify, redirect, render_template, request, url_for
+from markupsafe import Markup, escape
 
+import commands
 import db
-from db import fmt_lap, now, parse_lap, query
+from db import fmt_lap, fmt_num, now, parse_lap, query
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY", "rms-dev-only")
 app.teardown_appcontext(db.close_db)
 app.jinja_env.filters["lap"] = fmt_lap
+app.jinja_env.filters["num"] = fmt_num
 app.jinja_env.filters["record"] = lambda row: dict(row) if row is not None else {}
 app.jinja_env.filters["ratio"] = lambda s: f"{s['rear_sprocket'] / s['front_sprocket']:.3f}"
-app.jinja_env.filters["nice_date"] = lambda iso: dt.date.fromisoformat(iso).strftime("%b %-d, %Y" if os.name != "nt" else "%b %#d, %Y") if iso else "—"
+app.jinja_env.filters["nice_date"] = lambda iso: dt.date.fromisoformat(iso).strftime("%b %#d, %Y" if os.name == "nt" else "%b %-d, %Y") if iso else "—"
+app.jinja_env.filters["ago"] = lambda ts: dt.datetime.fromtimestamp(ts).strftime("%b %#d, %#I:%M %p" if os.name == "nt" else "%b %-d, %-I:%M %p")
+
+
+@app.template_filter("delta")
+def delta(lap, target):
+    if lap is None or target is None:
+        return ""
+    d = lap - target
+    return Markup(f'<span class="delta {"up" if d > 0 else "down"}">{"+" if d > 0 else "−"}{abs(d):.3f}</span>')
+
 
 TIRE_LIFE_RUNS = int(os.getenv("TIRE_LIFE_RUNS", "20"))
 
 # ---------------------------------------------------------------- shared SQL
 
+DRIVER_SQL = """
+SELECT d.*, s.name AS setup_name, s.front_sprocket, s.rear_sprocket, s.front_width, s.rear_width,
+       s.front_psi, s.rear_psi, s.tire, k.name AS kart_name, k.chassis, k.engine,
+       (SELECT MIN(best_lap) FROM runs WHERE driver_id = d.id) AS best_lap,
+       (SELECT COUNT(*) FROM results WHERE driver_id = d.id) AS race_count,
+       (SELECT COUNT(*) FROM results WHERE driver_id = d.id AND finish_pos = 1 AND dnf = 0) AS wins,
+       (SELECT COUNT(*) FROM results WHERE driver_id = d.id AND finish_pos <= 3 AND dnf = 0) AS podiums
+FROM drivers d JOIN setups s ON s.id = d.setup_id JOIN karts k ON k.id = d.kart_id
+"""
+
 SETUP_SQL = """
-SELECT s.*, k.name AS kart_name, k.kart_class, k.chassis, k.driver_id,
-       d.name AS driver_name, d.number AS driver_number,
+SELECT s.*,
        (SELECT MIN(best_lap) FROM runs WHERE setup_id = s.id) AS best_lap,
-       (SELECT COUNT(*) FROM runs WHERE setup_id = s.id) AS run_count
-FROM setups s JOIN karts k ON k.id = s.kart_id JOIN drivers d ON d.id = k.driver_id
+       (SELECT COUNT(*) FROM runs WHERE setup_id = s.id) AS run_count,
+       (SELECT GROUP_CONCAT(number, ',') FROM drivers WHERE setup_id = s.id) AS used_by
+FROM setups s
 """
 
 RUN_SQL = """
-SELECT r.*, s.name AS setup_name, s.track, s.front_sprocket, s.rear_sprocket, s.kart_id,
-       k.kart_class, k.name AS kart_name, d.id AS driver_id, d.name AS driver_name,
-       d.number AS driver_number, t.name AS tire_name, e.name AS event_name
+SELECT r.*, d.name AS driver_name, d.number AS driver_number, COALESCE(k.kart_class, d.kart_class) AS kart_class,
+       k.name AS kart_name, s.name AS setup_name, s.front_sprocket, s.rear_sprocket,
+       t.name AS track_name, t.target_lap, ts.name AS tire_name, e.name AS event_name
 FROM runs r
-JOIN setups s ON s.id = r.setup_id
-JOIN karts k ON k.id = s.kart_id
-JOIN drivers d ON d.id = k.driver_id
-LEFT JOIN tire_sets t ON t.id = r.tire_set_id
+JOIN drivers d ON d.id = r.driver_id
+LEFT JOIN setups s ON s.id = r.setup_id
+LEFT JOIN karts k ON k.id = r.kart_id
+LEFT JOIN tracks t ON t.id = r.track_id
+LEFT JOIN tire_sets ts ON ts.id = r.tire_set_id
 LEFT JOIN events e ON e.id = r.event_id
 """
 
 RESULT_SQL = """
 SELECT res.*, d.name AS driver_name, d.number AS driver_number, s.name AS setup_name,
-       e.name AS event_name, e.start_date, e.track
+       e.name AS event_name, e.start_date, t.name AS track_name
 FROM results res
 JOIN drivers d ON d.id = res.driver_id
 JOIN events e ON e.id = res.event_id
+LEFT JOIN tracks t ON t.id = e.track_id
 LEFT JOIN setups s ON s.id = res.setup_id
+"""
+
+EVENT_SQL = "SELECT e.*, t.name AS track_name FROM events e LEFT JOIN tracks t ON t.id = e.track_id"
+
+CHANGE_SQL = """
+SELECT c.*, d.name AS driver_name, d.number AS driver_number, fs.name AS from_name, ts.name AS to_name,
+       (d.setup_id = c.to_setup_id AND c.id = (SELECT MAX(id) FROM setup_changes WHERE driver_id = c.driver_id)) AS undoable
+FROM setup_changes c
+JOIN drivers d ON d.id = c.driver_id
+LEFT JOIN setups fs ON fs.id = c.from_setup_id
+LEFT JOIN setups ts ON ts.id = c.to_setup_id
 """
 
 
@@ -66,7 +103,10 @@ def F(name, label, type="text", col=6, **kw):
 FORMS = {
     "driver": dict(table="drivers", title="Driver", fields=[
         F("name", "Name", required=True, col=8),
-        F("number", "Kart #", col=4),
+        F("number", "Kart #", required=True, col=4),
+        F("kart_class", "Class", type="select", options="classes", required=True, col=4),
+        F("kart_id", "Kart", type="select", options="karts_new", required=True, col=8),
+        F("setup_id", "Current setup", type="select", options="setups", required=True, col=12),
         F("phone", "Phone"),
         F("email", "Email", type="email"),
         F("discord_id", "Discord user ID"),
@@ -74,11 +114,10 @@ FORMS = {
         F("notes", "Notes", type="textarea", col=12),
     ]),
     "kart": dict(table="karts", title="Kart", fields=[
-        F("driver_id", "Driver", type="select", options="drivers", required=True),
+        F("name", "Kart name", required=True, placeholder="e.g. #24 Margay"),
         F("kart_class", "Class", type="select", options="classes", required=True),
-        F("name", "Kart name", required=True, placeholder="e.g. #84 Margay"),
         F("chassis", "Chassis", placeholder="Margay Ignite K3"),
-        F("engine", "Engine", placeholder="Briggs LO206"),
+        F("engine", "Engine", placeholder="Margay Ignite 212"),
         F("engine_number", "Engine / seal #"),
         F("notes", "Notes", type="textarea", col=12),
     ]),
@@ -89,10 +128,17 @@ FORMS = {
         F("retired", "Retired", type="check", col=3),
         F("notes", "Notes", type="textarea", col=12),
     ]),
+    "track": dict(table="tracks", title="Track", fields=[
+        F("name", "Track name", required=True, col=12),
+        F("city", "City", col=5),
+        F("state", "State", col=3),
+        F("target_lap", "Good lap", type="lap", placeholder="53.000", col=4),
+        F("notes", "Notes", type="textarea", col=12),
+    ]),
     "event": dict(table="events", title="Event", fields=[
         F("name", "Event name", required=True, col=8),
         F("event_type", "Type", type="select", options="event_types", required=True, col=4),
-        F("track", "Track", list="tracks"),
+        F("track_id", "Track", type="select", options="tracks"),
         F("series", "Series", placeholder="Club, regional, national…"),
         F("start_date", "Start date", type="date", required=True, col=4),
         F("end_date", "End date", type="date", col=4),
@@ -100,15 +146,12 @@ FORMS = {
         F("notes", "Notes", type="textarea", col=12),
     ]),
     "setup": dict(table="setups", title="Setup", size="xl", fields=[
-        F("kart_id", "Kart", type="select", options="karts", required=True, section="Basics"),
-        F("name", "Setup name", required=True),
-        F("track", "Track", list="tracks"),
-        F("conditions", "Conditions", placeholder="Hot & sunny, rubbered in"),
+        F("name", "Setup name", placeholder="Leave blank to name it from the numbers", col=12, section="Basics"),
         F("front_sprocket", "Front sprocket (T)", type="number", required=True, col=3, section="Gearing & track width"),
         F("rear_sprocket", "Rear sprocket (T)", type="number", required=True, col=3),
-        F("front_width", "Front width (in)", type="number", step="0.01", col=3),
-        F("rear_width", "Rear width (in)", type="number", step="0.01", col=3),
-        F("tire", "Tire", col=6, section="Tires"),
+        F("front_width", "Front track width (in)", type="number", step="0.01", col=3),
+        F("rear_width", "Rear track width (in)", type="number", step="0.01", col=3),
+        F("tire", "Tire", col=6, section="Tires", placeholder="Hoosier R80"),
         F("front_psi", "Front PSI", type="number", step="0.1", col=3),
         F("rear_psi", "Rear PSI", type="number", step="0.1", col=3),
         F("axle", "Axle", col=4, section="Chassis"),
@@ -123,16 +166,19 @@ FORMS = {
         F("notes", "Notes", type="textarea", col=12, section="Notes"),
     ]),
     "run": dict(table="runs", title="Run", fields=[
-        F("setup_id", "Setup", type="select", options="setups", required=True, col=12),
+        F("driver_id", "Driver", type="select", options="drivers", required=True, col=4),
+        F("setup_id", "Setup", type="select", options="setups", col=8),
+        F("event_id", "Event", type="select", options="events", col=6),
+        F("track_id", "Track", type="select", options="tracks", col=6),
         F("run_date", "Date", type="date", required=True, default=today, col=4),
         F("session", "Session", type="select", options="sessions", col=4),
-        F("event_id", "Event", type="select", options="events", col=4),
+        F("kart_id", "Kart", type="select", options="karts", col=4),
         F("best_lap", "Best lap", type="lap", placeholder="45.123 or 1:02.345", col=4),
         F("laps", "Laps", type="number", col=4),
         F("track_condition", "Track condition", type="select", options="track_conditions", col=4),
         F("air_temp", "Air temp (°F)", type="number", step="0.1", col=4),
         F("track_temp", "Track temp (°F)", type="number", step="0.1", col=4),
-        F("tire_set_id", "Tire set", type="select", options="tire_sets", filter_by="setup_id", col=4),
+        F("tire_set_id", "Tire set", type="select", options="tire_sets", filter_by="kart_id", col=4),
         F("notes", "Notes", type="textarea", col=12),
     ]),
     "result": dict(table="results", title="Race result", fields=[
@@ -148,39 +194,40 @@ FORMS = {
         F("notes", "Notes", type="textarea", col=12),
     ]),
 }
+TEXT_OPTIONS = {"classes", "sessions", "track_conditions", "event_types", "event_statuses"}
 
 
 def form_options():
-    """(value, label, filter_key) tuples for every select used by FORMS."""
-    simple = lambda xs: [(x, x, None) for x in xs]
+    """(value, label, filter_key, fill) tuples for every select used by FORMS.
+    filter_key pairs a child option with its parent (tire set → kart); fill pre-fills other fields."""
+    simple = lambda xs: [(x, x, None, None) for x in xs]
+    karts = [(r["id"], f"{r['name']} ({r['kart_class']})", r["id"], None)
+             for r in query("SELECT * FROM karts ORDER BY name")]
     return {
-        "classes": simple(db.CLASSES),
-        "sessions": simple(db.SESSIONS),
-        "track_conditions": simple(db.TRACK_CONDITIONS),
-        "event_types": simple(db.EVENT_TYPES),
-        "event_statuses": simple(db.EVENT_STATUSES),
-        "drivers": [(r["id"], f"{r['name']}" + (f" #{r['number']}" if r["number"] else ""), None)
-                    for r in query("SELECT * FROM drivers ORDER BY active DESC, name")],
-        "karts": [(r["id"], f"{r['driver_name']} — {r['name']} ({r['kart_class']})", None)
-                  for r in query("SELECT k.*, d.name AS driver_name FROM karts k JOIN drivers d ON d.id = k.driver_id ORDER BY d.name, k.name")],
-        "setups": [(r["id"], f"{r['driver_name']} — {r['name']}" + (f" @ {r['track']}" if r["track"] else ""), r["kart_id"])
-                   for r in query(SETUP_SQL + " ORDER BY d.name, s.name")],
-        "events": [(r["id"], f"{r['start_date']} · {r['name']}", None)
+        **{name: simple(values) for name, values in (
+            ("classes", db.CLASSES), ("sessions", db.SESSIONS), ("track_conditions", db.TRACK_CONDITIONS),
+            ("event_types", db.EVENT_TYPES), ("event_statuses", db.EVENT_STATUSES))},
+        "drivers": [(r["id"], f"#{r['number']} {r['name']}", None,
+                     {"setup_id": r["setup_id"], "kart_id": r["kart_id"], "kart_class": r["kart_class"]})
+                    for r in query("SELECT * FROM drivers ORDER BY active DESC, CAST(number AS INTEGER), number")],
+        "karts": karts,
+        "karts_new": [("new", "＋ New kart for this driver", None, None)] + karts,
+        "setups": [(r["id"], f"{r['name']}" + (f"  — used by #{r['used_by'].replace(',', ', #')}" if r["used_by"] else ""), None, None)
+                   for r in query(SETUP_SQL + " ORDER BY s.name")],
+        "tracks": [(r["id"], r["name"], None, None) for r in query("SELECT * FROM tracks ORDER BY name")],
+        "events": [(r["id"], f"{r['start_date']} · {r['name']}", None, {"track_id": r["track_id"]})
                    for r in query("SELECT * FROM events ORDER BY start_date DESC")],
-        "races": [(r["id"], f"{r['start_date']} · {r['name']}", None)
+        "races": [(r["id"], f"{r['start_date']} · {r['name']}", None, None)
                   for r in query("SELECT * FROM events WHERE event_type = 'Race' ORDER BY start_date DESC")],
-        "tire_sets": [(r["id"], f"{r['name']} ({r['runs']} runs)", r["kart_id"])
+        "tire_sets": [(r["id"], f"{r['name']} ({r['runs']} runs)", r["kart_id"], None)
                       for r in query("SELECT * FROM tire_sets WHERE retired = 0 ORDER BY name")],
     }
 
 
 @app.context_processor
 def inject_globals():
-    tracks = sorted({r[0] for r in query(
-        "SELECT track FROM setups WHERE track IS NOT NULL AND track != '' "
-        "UNION SELECT track FROM events WHERE track IS NOT NULL AND track != ''")})
-    return dict(FORMS=FORMS, form_options=form_options, tracks=tracks, today=today(),
-                classes=db.CLASSES, tire_life=TIRE_LIFE_RUNS)
+    return dict(FORMS=FORMS, form_options=form_options, today=today(), classes=db.CLASSES,
+                tire_life=TIRE_LIFE_RUNS, keywords=commands.KEYWORDS)
 
 
 def coerce(field, raw):
@@ -200,7 +247,7 @@ def coerce(field, raw):
         except ValueError:
             raise ValueError(f"{field['label']} must be a number")
         return int(num) if num.is_integer() and field.get("step") is None else num
-    if kind == "select" and field["options"] not in ("classes", "sessions", "track_conditions", "event_types", "event_statuses"):
+    if kind == "select" and field["options"] not in TEXT_OPTIONS:
         return int(raw)
     return raw
 
@@ -222,13 +269,19 @@ def save(key):
     spec = FORMS.get(key) or abort(404)
     table = spec["table"]
     record_id = request.form.get("id", type=int)
+    conn = db.get_db()
     try:
-        values = {f["name"]: coerce(f, request.form.get(f["name"])) for f in spec["fields"]}
+        fields = spec["fields"]
+        new_kart = key == "driver" and request.form.get("kart_id") == "new"
+        if new_kart:
+            fields = [f for f in fields if f["name"] != "kart_id"]
+        values = {f["name"]: coerce(f, request.form.get(f["name"])) for f in fields}
+        if new_kart:
+            values["kart_id"] = db.insert(conn, "karts", name=f"#{values['number']} kart", kart_class=values["kart_class"])
     except ValueError as exc:
         flash(str(exc), "danger")
         return back()
 
-    conn = db.get_db()
     old = query(f"SELECT * FROM {table} WHERE id = ?", (record_id,), one=True) if record_id else None
     if record_id and old is None:
         abort(404)
@@ -239,21 +292,27 @@ def save(key):
         if values["tire_set_id"] != old_tire:
             adjust_tire(old_tire, -1)
             values["tire_runs"] = adjust_tire(values["tire_set_id"], 1)
+        if values["track_id"] is None and values["event_id"]:
+            values["track_id"] = query("SELECT track_id FROM events WHERE id = ?", (values["event_id"],), one=True)[0]
     if key == "setup":
         values["updated_at"] = now()
+        values["name"] = values["name"] or commands.auto_name(values)
 
-    if old:
-        cols = ", ".join(f"{c} = ?" for c in values)
-        conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*values.values(), record_id))
-        flash(f"{spec['title']} updated", "success")
-    else:
-        values["created_at"] = now()
-        if key == "setup":
-            values["updated_at"] = values["created_at"]
-        cols = ", ".join(values)
-        conn.execute(f"INSERT INTO {table} ({cols}) VALUES ({', '.join('?' * len(values))})", tuple(values.values()))
-        flash(f"{spec['title']} added", "success")
-    conn.commit()
+    try:
+        if old:
+            cols = ", ".join(f"{c} = ?" for c in values)
+            conn.execute(f"UPDATE {table} SET {cols} WHERE id = ?", (*values.values(), record_id))
+            flash(f"{spec['title']} updated", "success")
+        else:
+            if key == "setup":
+                values["created_at"] = values["updated_at"]
+            db.insert(conn, table, **values)
+            flash(f"{spec['title']} added", "success")
+        conn.commit()
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        msg = "That kart number is already taken" if "drivers.number" in str(exc) else f"Couldn't save: {exc}"
+        flash(msg, "danger")
     return back()
 
 
@@ -265,11 +324,56 @@ def delete(key, record_id):
         row = query("SELECT tire_set_id FROM runs WHERE id = ?", (record_id,), one=True)
         if row:
             adjust_tire(row["tire_set_id"], -1)
-    conn.execute(f"DELETE FROM {spec['table']} WHERE id = ?", (record_id,))
-    conn.commit()
-    flash(f"{spec['title']} deleted", "secondary")
+    try:
+        conn.execute(f"DELETE FROM {spec['table']} WHERE id = ?", (record_id,))
+        conn.commit()
+        flash(f"{spec['title']} deleted", "secondary")
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        col = "setup_id" if key == "setup" else "kart_id"
+        users = query(f"SELECT number FROM drivers WHERE {col} = ?", (record_id,))
+        flash(f"Can't delete: driver{'s' if len(users) != 1 else ''} "
+              f"{', '.join('#' + u['number'] for u in users)} still use{'s' if len(users) == 1 else ''} it. "
+              f"Move them to another {spec['title'].lower()} first.", "danger")
+        return back()
     nxt = request.form.get("next")
     return redirect(nxt) if nxt else back()
+
+
+# ---------------------------------------------------------------- race-day commands
+
+def outcome_html(o):
+    who = f"<strong>#{escape(o.driver['number'])} {escape(o.driver['name'])}</strong> · " if o.driver else ""
+    changes = " · ".join(f"{escape(label)} {escape(a)} → <strong>{escape(b)}</strong>" for label, a, b in o.changes)
+    body = escape(o.message) if not changes else Markup(changes) + Markup(" · ") + escape(o.message.split(" → ", 1)[-1])
+    warn = "".join(f'<div class="small"><i class="bi bi-exclamation-triangle"></i> {escape(w)}</div>' for w in o.warnings)
+    return Markup(f'<code class="me-2">{escape(o.line)}</code>{who}{body}{warn}')
+
+
+@app.post("/cmd")
+def run_command():
+    for o in commands.run(db.get_db(), request.form.get("q", "")):
+        cat = "danger" if not o.ok else "warning" if o.warnings else "secondary" if o.kind == "noop" else "success"
+        flash(outcome_html(o), cat)
+    return back()
+
+
+@app.get("/cmd/preview")
+def preview_command():
+    outcomes = commands.run(db.get_db(), request.args.get("q", ""), dry_run=True)
+    return jsonify([o.as_dict() for o in outcomes])
+
+
+@app.post("/changes/<int:change_id>/undo")
+def undo_change(change_id):
+    conn = db.get_db()
+    try:
+        flash(outcome_html(commands.undo(conn, change_id)), "success")
+        conn.commit()
+    except commands.CommandError as exc:
+        conn.rollback()
+        flash(str(exc), "danger")
+    return back()
 
 
 # ---------------------------------------------------------------- pages
@@ -282,131 +386,130 @@ def dashboard():
         setups=query("SELECT COUNT(*) FROM setups", one=True)[0],
         runs=query("SELECT COUNT(*) FROM runs", one=True)[0],
     )
-    upcoming = query("SELECT * FROM events WHERE COALESCE(end_date, start_date) >= ? AND status != 'Cancelled' "
-                     "ORDER BY start_date LIMIT 5", (today(),))
+    upcoming = query(EVENT_SQL + " WHERE COALESCE(e.end_date, e.start_date) >= ? AND e.status != 'Cancelled' "
+                     "ORDER BY e.start_date LIMIT 5", (today(),))
     recent = query(RUN_SQL + " ORDER BY r.run_date DESC, r.id DESC LIMIT 8")
-    records = track_records()[:6]
-    results = query(RESULT_SQL + " WHERE res.finish_pos IS NOT NULL ORDER BY e.start_date DESC, res.finish_pos LIMIT 6")
-    worn = query("SELECT t.*, k.name AS kart_name, d.name AS driver_name FROM tire_sets t "
-                 "JOIN karts k ON k.id = t.kart_id JOIN drivers d ON d.id = k.driver_id "
+    changes = query(CHANGE_SQL + " ORDER BY c.id DESC LIMIT 6")
+    lineup = query(DRIVER_SQL + " WHERE d.active = 1 ORDER BY CAST(d.number AS INTEGER), d.number")
+    worn = query("SELECT t.*, k.name AS kart_name FROM tire_sets t JOIN karts k ON k.id = t.kart_id "
                  "WHERE t.retired = 0 AND t.runs >= ? ORDER BY t.runs DESC LIMIT 5", (int(TIRE_LIFE_RUNS * 0.75),))
     next_event = upcoming[0] if upcoming else None
     days_out = (dt.date.fromisoformat(next_event["start_date"]) - dt.date.today()).days if next_event else None
-    return render_template("dashboard.html", stats=stats, upcoming=upcoming, recent=recent, records=records,
-                           results=results, worn=worn, next_event=next_event, days_out=days_out)
+    return render_template("dashboard.html", stats=stats, upcoming=upcoming, recent=recent, records=track_records()[:6],
+                           changes=changes, lineup=lineup, worn=worn, next_event=next_event, days_out=days_out)
 
 
 def track_records(kart_class=None):
-    sql = (RUN_SQL + " WHERE r.best_lap IS NOT NULL" + (" AND k.kart_class = ?" if kart_class else "")
-           + " ORDER BY r.best_lap")
+    sql = (RUN_SQL + " WHERE r.best_lap IS NOT NULL AND r.track_id IS NOT NULL"
+           + (" AND COALESCE(k.kart_class, d.kart_class) = ?" if kart_class else "") + " ORDER BY r.best_lap")
     best = OrderedDict()
     for r in query(sql, (kart_class,) if kart_class else ()):
-        best.setdefault((r["track"] or "Unknown track", r["kart_class"]), r)
+        best.setdefault((r["track_id"], r["kart_class"]), r)
     return list(best.values())
 
 
 @app.get("/drivers")
 def drivers():
-    rows = query("""
-        SELECT d.*,
-               (SELECT COUNT(*) FROM karts WHERE driver_id = d.id) AS kart_count,
-               (SELECT GROUP_CONCAT(DISTINCT kart_class) FROM karts WHERE driver_id = d.id) AS classes,
-               (SELECT COUNT(*) FROM setups s JOIN karts k ON k.id = s.kart_id WHERE k.driver_id = d.id) AS setup_count,
-               (SELECT COUNT(*) FROM results WHERE driver_id = d.id) AS race_count,
-               (SELECT COUNT(*) FROM results WHERE driver_id = d.id AND finish_pos = 1) AS wins,
-               (SELECT COUNT(*) FROM results WHERE driver_id = d.id AND finish_pos <= 3) AS podiums
-        FROM drivers d ORDER BY d.active DESC, d.name""")
-    return render_template("drivers.html", drivers=rows)
+    rows = query(DRIVER_SQL + " ORDER BY d.active DESC, CAST(d.number AS INTEGER), d.number")
+    changes = query(CHANGE_SQL + " ORDER BY c.id DESC LIMIT 12")
+    return render_template("drivers.html", drivers=rows, changes=changes)
 
 
 @app.get("/drivers/<int:driver_id>")
 def driver_detail(driver_id):
-    driver = query("SELECT * FROM drivers WHERE id = ?", (driver_id,), one=True) or abort(404)
-    karts = query("SELECT * FROM karts WHERE driver_id = ? ORDER BY name", (driver_id,))
-    setups = query(SETUP_SQL + " WHERE k.driver_id = ? ORDER BY s.updated_at DESC", (driver_id,))
-    runs = query(RUN_SQL + " WHERE d.id = ? ORDER BY r.run_date DESC, r.id DESC LIMIT 25", (driver_id,))
+    driver = query(DRIVER_SQL + " WHERE d.id = ?", (driver_id,), one=True) or abort(404)
+    setup = query(SETUP_SQL + " WHERE s.id = ?", (driver["setup_id"],), one=True)
+    kart = query("SELECT * FROM karts WHERE id = ?", (driver["kart_id"],), one=True)
+    tires = query("SELECT * FROM tire_sets WHERE kart_id = ? ORDER BY retired, runs", (driver["kart_id"],))
+    changes = query(CHANGE_SQL + " WHERE c.driver_id = ? ORDER BY c.id DESC LIMIT 20", (driver_id,))
+    runs = query(RUN_SQL + " WHERE r.driver_id = ? ORDER BY r.run_date DESC, r.id DESC LIMIT 25", (driver_id,))
     results = query(RESULT_SQL + " WHERE res.driver_id = ? ORDER BY e.start_date DESC", (driver_id,))
-    return render_template("driver_detail.html", driver=driver, karts=karts, setups=setups, runs=runs, results=results)
+    return render_template("driver_detail.html", driver=driver, setup=setup, kart=kart, tires=tires,
+                           changes=changes, runs=runs, results=results)
 
 
 @app.get("/races")
 def races():
     show = request.args.get("show", "all")
-    where = "e.event_type = 'Race'"
+    where, args = "e.event_type = 'Race'", []
     if show == "upcoming":
-        where += f" AND COALESCE(e.end_date, e.start_date) >= '{today()}'"
+        where += " AND COALESCE(e.end_date, e.start_date) >= ?"
+        args.append(today())
     elif show == "completed":
         where += " AND e.status = 'Completed'"
     rows = query(f"""
-        SELECT e.*,
+        SELECT e.*, t.name AS track_name,
                (SELECT COUNT(*) FROM results WHERE event_id = e.id) AS entries,
-               (SELECT MIN(finish_pos) FROM results WHERE event_id = e.id) AS best_finish,
+               (SELECT MIN(finish_pos) FROM results WHERE event_id = e.id AND dnf = 0) AS best_finish,
                (SELECT d.name FROM results r JOIN drivers d ON d.id = r.driver_id
-                 WHERE r.event_id = e.id ORDER BY r.finish_pos IS NULL, r.finish_pos LIMIT 1) AS top_driver,
+                 WHERE r.event_id = e.id AND r.dnf = 0 ORDER BY r.finish_pos IS NULL, r.finish_pos LIMIT 1) AS top_driver,
                (SELECT MIN(best_lap) FROM results WHERE event_id = e.id) AS fast_lap
-        FROM events e WHERE {where} ORDER BY e.start_date DESC""")
+        FROM events e LEFT JOIN tracks t ON t.id = e.track_id WHERE {where} ORDER BY e.start_date DESC""", args)
     return render_template("races.html", races=rows, show=show)
 
 
 @app.get("/races/<int:event_id>")
 def race_detail(event_id):
-    event = query("SELECT * FROM events WHERE id = ?", (event_id,), one=True) or abort(404)
+    event = query(EVENT_SQL + " WHERE e.id = ?", (event_id,), one=True) or abort(404)
     results = query(RESULT_SQL + " WHERE res.event_id = ? ORDER BY res.kart_class, res.dnf, "
                     "res.finish_pos IS NULL, res.finish_pos", (event_id,))
     runs = query(RUN_SQL + " WHERE r.event_id = ? ORDER BY r.run_date, r.session, r.best_lap", (event_id,))
-    return render_template("race_detail.html", event=event, results=results, runs=runs)
+    target = query("SELECT target_lap FROM tracks WHERE id = ?", (event["track_id"],), one=True)
+    return render_template("race_detail.html", event=event, results=results, runs=runs,
+                           target=target["target_lap"] if target else None)
 
 
 @app.get("/schedule")
 def schedule():
     past = request.args.get("past") == "1"
-    sql = "SELECT * FROM events " + ("" if past else "WHERE COALESCE(end_date, start_date) >= ? ") + "ORDER BY start_date"
-    rows = query(sql, () if past else (today(),))
+    sql = EVENT_SQL + ("" if past else " WHERE COALESCE(e.end_date, e.start_date) >= ?") + " ORDER BY e.start_date"
     months = OrderedDict()
-    for e in rows:
+    for e in query(sql, () if past else (today(),)):
         d = dt.date.fromisoformat(e["start_date"])
         months.setdefault(d.strftime("%B %Y"), []).append((d, e))
-    return render_template("schedule.html", months=months, past=past)
+    tracks = query("""SELECT t.*, (SELECT MIN(best_lap) FROM runs WHERE track_id = t.id) AS best_lap,
+                             (SELECT COUNT(*) FROM events WHERE track_id = t.id) AS event_count
+                      FROM tracks t ORDER BY t.name""")
+    return render_template("schedule.html", months=months, past=past, tracks=tracks)
 
 
 @app.get("/garage")
 def garage():
     karts = query("""
-        SELECT k.*, d.name AS driver_name, d.number AS driver_number,
-               (SELECT COUNT(*) FROM setups WHERE kart_id = k.id) AS setup_count,
-               (SELECT MIN(r.best_lap) FROM runs r JOIN setups s ON s.id = r.setup_id WHERE s.kart_id = k.id) AS best_lap
-        FROM karts k JOIN drivers d ON d.id = k.driver_id ORDER BY d.name, k.name""")
+        SELECT k.*, (SELECT GROUP_CONCAT('#' || number || ' ' || name, ', ') FROM drivers WHERE kart_id = k.id) AS drivers,
+               (SELECT MIN(best_lap) FROM runs WHERE kart_id = k.id) AS best_lap,
+               (SELECT COUNT(*) FROM runs WHERE kart_id = k.id) AS run_count
+        FROM karts k ORDER BY k.kart_class, k.name""")
     tires = {}
     for t in query("SELECT * FROM tire_sets ORDER BY retired, runs"):
         tires.setdefault(t["kart_id"], []).append(t)
-    by_driver = OrderedDict()
-    for k in karts:
-        by_driver.setdefault((k["driver_id"], k["driver_name"], k["driver_number"]), []).append(k)
-    return render_template("garage.html", by_driver=by_driver, tires=tires)
+    return render_template("garage.html", karts=karts, tires=tires)
 
 
 @app.get("/setups")
 def setups():
-    f = {k: request.args.get(k, "") for k in ("driver", "kart_class", "track", "q")}
+    f = {k: request.args.get(k, "") for k in ("q", "used", "rear")}
     where, args = [], []
-    if f["driver"]:
-        where.append("k.driver_id = ?"); args.append(f["driver"])
-    if f["kart_class"]:
-        where.append("k.kart_class = ?"); args.append(f["kart_class"])
-    if f["track"]:
-        where.append("s.track = ?"); args.append(f["track"])
     if f["q"]:
-        where.append("(s.name LIKE ? OR s.notes LIKE ? OR k.chassis LIKE ?)"); args += [f"%{f['q']}%"] * 3
-    rows = query(SETUP_SQL + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY s.updated_at DESC", args)
-    drivers = query("SELECT id, name FROM drivers ORDER BY name")
-    return render_template("setups.html", setups=rows, f=f, drivers=drivers)
+        where.append("(s.name LIKE ? OR s.notes LIKE ? OR s.tire LIKE ?)"); args += [f"%{f['q']}%"] * 3
+    if f["used"] == "1":
+        where.append("EXISTS (SELECT 1 FROM drivers WHERE setup_id = s.id)")
+    if f["rear"]:
+        where.append("s.rear_sprocket = ?"); args.append(f["rear"])
+    rows = query(SETUP_SQL + (" WHERE " + " AND ".join(where) if where else "")
+                 + " ORDER BY (SELECT COUNT(*) FROM drivers WHERE setup_id = s.id) DESC, s.updated_at DESC", args)
+    rears = [r[0] for r in query("SELECT DISTINCT rear_sprocket FROM setups ORDER BY 1")]
+    return render_template("setups.html", setups=rows, f=f, rears=rears)
 
 
 @app.get("/setups/<int:setup_id>")
 def setup_detail(setup_id):
     setup = query(SETUP_SQL + " WHERE s.id = ?", (setup_id,), one=True) or abort(404)
     runs = query(RUN_SQL + " WHERE r.setup_id = ? ORDER BY r.run_date DESC, r.id DESC", (setup_id,))
-    return render_template("setup_detail.html", s=setup, runs=runs)
+    drivers = query("SELECT * FROM drivers WHERE setup_id = ? ORDER BY CAST(number AS INTEGER)", (setup_id,))
+    changes = query(CHANGE_SQL + " WHERE c.from_setup_id = ? OR c.to_setup_id = ? ORDER BY c.id DESC LIMIT 15",
+                    (setup_id, setup_id))
+    return render_template("setup_detail.html", s=setup, runs=runs, drivers=drivers, changes=changes)
 
 
 @app.post("/setups/<int:setup_id>/clone")
@@ -416,39 +519,38 @@ def setup_clone(setup_id):
     values["name"] = request.form.get("name") or f"{src['name']} (copy)"
     values["created_at"] = values["updated_at"] = now()
     conn = db.get_db()
-    cur = conn.execute(f"INSERT INTO setups ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
-                       tuple(values.values()))
+    new_id = db.insert(conn, "setups", **values)
     conn.commit()
     flash(f"Cloned to “{values['name']}”", "success")
-    return redirect(url_for("setup_detail", setup_id=cur.lastrowid))
+    return redirect(url_for("setup_detail", setup_id=new_id))
 
 
 COMPARE_ROWS = [
-    ("Driver", "driver_name"), ("Kart", "kart_name"), ("Class", "kart_class"), ("Chassis", "chassis"),
-    ("Track", "track"), ("Front sprocket", "front_sprocket"), ("Rear sprocket", "rear_sprocket"),
-    ("Gear ratio", "ratio"), ("Front width", "front_width"), ("Rear width", "rear_width"), ("Tire", "tire"),
+    ("Used by", "used_by"), ("Front sprocket", "front_sprocket"), ("Rear sprocket", "rear_sprocket"),
+    ("Gear ratio", "ratio"), ("Front track width", "front_width"), ("Rear track width", "rear_width"), ("Tire", "tire"),
     ("Front PSI", "front_psi"), ("Rear PSI", "rear_psi"), ("Axle", "axle"), ("Caster", "caster"),
     ("Camber", "camber"), ("Seat", "seat_position"), ("Ride height", "ride_height"),
     ("Weight", "total_weight"), ("Ballast", "ballast"), ("Carb jetting", "carb_jetting"), ("Clutch", "clutch"),
-    ("Conditions", "conditions"), ("Best lap", "best_lap"), ("Runs", "run_count"),
+    ("Best lap", "best_lap"), ("Runs", "run_count"),
 ]
 
 
 @app.get("/setups/compare")
 def setup_compare():
     ids = request.args.getlist("ids", type=int)
-    chosen = [query(SETUP_SQL + " WHERE s.id = ?", (i,), one=True) for i in ids]
-    chosen = [s for s in chosen if s]
+    chosen = [s for s in (query(SETUP_SQL + " WHERE s.id = ?", (i,), one=True) for i in ids) if s]
     table = []
     for label, key in COMPARE_ROWS:
         if key == "ratio":
             vals = [f"{s['rear_sprocket'] / s['front_sprocket']:.3f}" for s in chosen]
         elif key == "best_lap":
             vals = [fmt_lap(s["best_lap"]) for s in chosen]
+        elif key == "used_by":
+            vals = [", ".join("#" + n for n in s["used_by"].split(",")) if s["used_by"] else "—" for s in chosen]
         else:
-            vals = ["—" if s[key] in (None, "") else s[key] for s in chosen]
+            vals = [fmt_num(s[key]) if s[key] not in (None, "") else "—" for s in chosen]
         table.append((label, vals, len(set(map(str, vals))) > 1))
-    options = query(SETUP_SQL + " ORDER BY d.name, s.name")
+    options = query(SETUP_SQL + " ORDER BY s.name")
     return render_template("setup_compare.html", chosen=chosen, table=table, options=options, ids=ids)
 
 
@@ -456,19 +558,22 @@ def setup_compare():
 def times():
     f = {k: request.args.get(k, "") for k in ("driver", "kart_class", "track", "session", "since")}
     where, args = [], []
-    for key, col in (("driver", "d.id"), ("kart_class", "k.kart_class"), ("track", "s.track"), ("session", "r.session")):
+    for key, col in (("driver", "d.id"), ("kart_class", "COALESCE(k.kart_class, d.kart_class)"),
+                     ("track", "r.track_id"), ("session", "r.session")):
         if f[key]:
             where.append(f"{col} = ?"); args.append(f[key])
     if f["since"]:
         where.append("r.run_date >= ?"); args.append(f["since"])
     runs = query(RUN_SQL + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY r.run_date DESC, r.id DESC", args)
-    best_by_setup = {}
+    best_by_driver_track = {}
     for r in runs:
-        if r["best_lap"] is not None and r["best_lap"] < best_by_setup.get(r["setup_id"], float("inf")):
-            best_by_setup[r["setup_id"]] = r["best_lap"]
-    drivers = query("SELECT id, name FROM drivers ORDER BY name")
-    return render_template("times.html", runs=runs, f=f, drivers=drivers, records=track_records(f["kart_class"] or None),
-                           best_by_setup=best_by_setup, sessions=db.SESSIONS)
+        key = (r["driver_id"], r["track_id"])
+        if r["best_lap"] is not None and r["best_lap"] < best_by_driver_track.get(key, float("inf")):
+            best_by_driver_track[key] = r["best_lap"]
+    return render_template("times.html", runs=runs, f=f, records=track_records(f["kart_class"] or None),
+                           best=best_by_driver_track, sessions=db.SESSIONS,
+                           drivers=query("SELECT id, number, name FROM drivers ORDER BY CAST(number AS INTEGER)"),
+                           tracks=query("SELECT id, name FROM tracks ORDER BY name"))
 
 
 db.init_db()

@@ -8,6 +8,8 @@
   {{ add_btn('event', 'Event', {'status': 'Scheduled'}) }}
 {% endblock %}
 {% block content %}
+<div class="row g-4">
+<div class="col-xxl-8">
 {% for month, events in months.items() %}
   <div class="rms-month">{{ month }}</div>
   <div class="row g-3">
@@ -24,7 +26,7 @@
           <h3 class="text-truncate">
             {% if e.event_type == 'Race' %}<a class="text-reset" href="{{ url_for('race_detail', event_id=e.id) }}">{{ e.name }}</a>{% else %}{{ e.name }}{% endif %}
           </h3>
-          <div class="small muted"><i class="bi bi-geo-alt"></i> {{ e.track or 'Track TBD' }}
+          <div class="small muted"><i class="bi bi-geo-alt"></i> {{ e.track_name or 'Track TBD' }}
             {% if e.end_date and e.end_date != e.start_date %} · through {{ e.end_date|nice_date }}{% endif %}</div>
           {% if e.notes %}<div class="small mt-1">{{ e.notes }}</div>{% endif %}
         </div>
@@ -36,4 +38,28 @@
 {% else %}
   <div class="rms-card"><div class="empty"><i class="bi bi-calendar3"></i>Nothing scheduled. Add a race, practice or test day.</div></div>
 {% endfor %}
+</div>
+<div class="col-xxl-4">
+  <div class="rms-card mt-xxl-4">
+    <div class="rms-card-head"><h2><i class="bi bi-geo-alt"></i> Tracks</h2>{{ add_btn('track', 'Track', cls='btn-sm btn-outline-rms') }}</div>
+    <div class="table-responsive">
+      <table class="table table-rms">
+        <thead><tr><th>Track</th><th class="text-end">Good lap</th><th class="text-end">RMS best</th><th></th></tr></thead>
+        <tbody>
+        {% for t in tracks %}
+          <tr>
+            <td><div class="fw-semibold">{{ t.name }}</div><div class="small muted">{{ [t.city, t.state]|select|join(', ') or '—' }}</div></td>
+            <td class="text-end lap">{{ t.target_lap|lap }}</td>
+            <td class="text-end text-nowrap"><span class="lap best">{{ t.best_lap|lap }}</span>{{ t.best_lap|delta(t.target_lap) }}</td>
+            <td class="actions">{{ edit_btn('track', t) }}{{ delete_btn('track', t.id, 'track') }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="4"><div class="empty">No tracks yet.</div></td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
 {% endblock %}

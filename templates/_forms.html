@@ -29,8 +29,9 @@
                 <select class="form-select" name="{{ f.name }}" id="{{ key }}-{{ f.name }}" {% if f.required %}required{% endif %}
                         {% if f.filter_by %}data-filter-by="{{ f.filter_by }}"{% endif %} data-default="{{ default or '' }}">
                   <option value="">{{ 'Choose…' if f.required else '—' }}</option>
-                  {% for value, label, fkey in opts[f.options] %}
-                    <option value="{{ value }}" {% if fkey is not none %}data-key="{{ fkey }}"{% endif %}>{{ label }}</option>
+                  {% for value, label, fkey, fill in opts[f.options] %}
+                    <option value="{{ value }}" {% if fkey is not none %}data-key="{{ fkey }}"{% endif %}
+                            {% if fill %}data-fill='{{ fill|tojson|forceescape }}'{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               {% elif f.type == 'textarea' %}

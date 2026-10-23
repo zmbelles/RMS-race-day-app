@@ -4,35 +4,46 @@
 {% block title %}Drivers{% endblock %}
 {% block actions %}{{ add_btn('driver', 'Driver') }}{% endblock %}
 {% block content %}
-<div class="rms-card">
-  <div class="rms-card-head"><h2><i class="bi bi-person-badge"></i> Roster <span class="chip">{{ drivers|length }}</span></h2></div>
-  <div class="table-responsive">
-    <table class="table table-rms table-hover">
-      <thead><tr><th>Driver</th><th>Classes</th><th class="text-center">Karts</th><th class="text-center">Setups</th>
-        <th class="text-center">Races</th><th class="text-center">Wins</th><th class="text-center">Podiums</th><th>Contact</th><th></th></tr></thead>
-      <tbody>
-      {% for d in drivers %}
-        <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}" class="{{ '' if d.active else 'opacity-50' }}">
-          <td>
-            <div class="d-flex align-items-center gap-2">
-              {{ ui.avatar(d.name, d.number, 'red' if d.active else '') }}
-              <div><div class="fw-semibold">{{ d.name }}</div><div class="small muted">{{ '#' ~ d.number if d.number else 'No number' }}{% if not d.active %} · inactive{% endif %}</div></div>
-            </div>
-          </td>
-          <td>{% for c in (d.classes or '').split(',') if c %}<span class="chip me-1">{{ c }}</span>{% else %}<span class="muted">—</span>{% endfor %}</td>
-          <td class="text-center">{{ d.kart_count }}</td>
-          <td class="text-center">{{ d.setup_count }}</td>
-          <td class="text-center">{{ d.race_count }}</td>
-          <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
-          <td class="text-center">{{ d.podiums or '—' }}</td>
-          <td class="small">{{ d.phone or '' }}{% if d.phone and d.email %}<br>{% endif %}<span class="muted">{{ d.email or '' }}</span></td>
-          <td class="actions">{{ edit_btn('driver', d) }}{{ delete_btn('driver', d.id, 'driver and all their karts, setups and runs') }}</td>
-        </tr>
-      {% else %}
-        <tr><td colspan="9"><div class="empty"><i class="bi bi-person-plus"></i>No drivers yet. Add your first one.</div></td></tr>
-      {% endfor %}
-      </tbody>
-    </table>
+<div class="row g-3">
+  <div class="col-xxl-9">
+    <div class="rms-card">
+      <div class="rms-card-head">
+        <h2><i class="bi bi-person-badge"></i> Lineup <span class="chip">{{ drivers|length }}</span></h2>
+        <span class="small muted d-none d-md-inline">Click a setup value to change it from the command bar</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-rms table-hover lineup">
+          <thead><tr><th>#</th><th>Driver</th><th>Kart</th><th>Setup</th><th>SPR</th><th>FTW</th><th>RTW</th><th>PSI</th>
+            <th class="text-center">Wins</th><th class="text-center">Races</th><th></th></tr></thead>
+          <tbody>
+          {% for d in drivers %}
+            <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}" class="{{ '' if d.active else 'opacity-50' }}">
+              <td class="num">{{ d.number }}</td>
+              <td><div class="fw-semibold text-nowrap">{{ d.name }}</div><span class="chip">{{ d.kart_class }}</span>{% if not d.active %} <span class="small muted">inactive</span>{% endif %}</td>
+              <td class="small text-nowrap">{{ d.kart_name }}</td>
+              <td class="small"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">{{ d.setup_name }}</a></td>
+              {{ ui.lineup_cells(d) }}
+              <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
+              <td class="text-center">{{ d.race_count }}</td>
+              <td class="actions">{{ edit_btn('driver', d) }}{{ delete_btn('driver', d.id, 'driver and their runs and results') }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="11"><div class="empty"><i class="bi bi-person-plus"></i>No drivers yet. Add a setup and a kart, then add a driver.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xxl-3">
+    <div class="rms-card">
+      <div class="rms-card-head"><h2><i class="bi bi-clock-history"></i> Setup changes</h2></div>
+      <div class="rms-card-body py-2">
+        {% for c in changes %}{{ ui.change_row(c) }}{% else %}
+          <div class="empty py-3">No changes yet. Try <code>24 SPR 61</code> in the command bar.</div>
+        {% endfor %}
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

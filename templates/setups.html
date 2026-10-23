@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_forms.html" import add_btn, edit_btn, delete_btn %}
+{% import "_ui.html" as ui %}
 {% block title %}Setups{% endblock %}
 {% block actions %}
   <a class="btn btn-outline-rms" href="{{ url_for('setup_compare') }}"><i class="bi bi-layout-split"></i> Compare</a>
@@ -7,20 +8,20 @@
 {% endblock %}
 {% block content %}
 <div class="row g-3 mb-3">
-  <div class="col-xl-8">
+  <div class="col-xl-7">
     <form class="rms-card rms-card-body filter-bar h-100" method="get">
-      <input class="form-control" name="q" value="{{ f.q }}" placeholder="Search name, chassis, notes">
-      <select class="form-select" name="driver"><option value="">All drivers</option>
-        {% for d in drivers %}<option value="{{ d.id }}" {{ 'selected' if f.driver == d.id|string }}>{{ d.name }}</option>{% endfor %}</select>
-      <select class="form-select" name="kart_class"><option value="">All classes</option>
-        {% for c in classes %}<option {{ 'selected' if f.kart_class == c }}>{{ c }}</option>{% endfor %}</select>
-      <select class="form-select" name="track"><option value="">All tracks</option>
-        {% for t in tracks %}<option {{ 'selected' if f.track == t }}>{{ t }}</option>{% endfor %}</select>
+      <input class="form-control" name="q" value="{{ f.q }}" placeholder="Search name, tire, notes">
+      <select class="form-select" name="rear"><option value="">Any rear sprocket</option>
+        {% for r in rears %}<option value="{{ r }}" {{ 'selected' if f.rear == r|string }}>{{ r }}T</option>{% endfor %}</select>
+      <div class="form-check form-switch ms-1">
+        <input class="form-check-input" type="checkbox" role="switch" name="used" value="1" id="f-used" {{ 'checked' if f.used }}>
+        <label class="form-check-label" for="f-used">In use only</label>
+      </div>
       <button class="btn btn-dark-rms"><i class="bi bi-funnel"></i> Filter</button>
       {% if f.values()|select|list %}<a class="btn btn-link" href="{{ url_for('setups') }}">Clear</a>{% endif %}
     </form>
   </div>
-  <div class="col-xl-4">
+  <div class="col-xl-5">
     <div class="rms-card rms-card-body h-100" data-gear-calc>
       <div class="d-flex align-items-center gap-2 mb-2">
         <div class="small-label me-auto"><i class="bi bi-gear-wide-connected text-danger"></i> Gear calculator</div>
@@ -39,22 +40,23 @@
   <div class="col-md-6 col-xxl-4">
     <div class="rms-card hoverable setup-card h-100 d-flex flex-column">
       <a href="{{ url_for('setup_detail', setup_id=s.id) }}" class="rms-card-body text-reset flex-grow-1">
-        <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
-          <div class="fw-bold fs-6 lh-sm">{{ s.name }}</div>
-          <span class="chip red">{{ s.kart_class }}</span>
-        </div>
-        <div class="small muted mb-3">{{ s.driver_name }} · {{ s.kart_name }} · <i class="bi bi-geo-alt"></i> {{ s.track or 'Any track' }}</div>
-        <div class="d-flex justify-content-between align-items-end">
+        <div class="fw-bold fs-6 lh-sm mb-2">{{ s.name }}</div>
+        <div class="mb-3">{{ ui.used_by(s) }}</div>
+        <div class="d-flex justify-content-between align-items-end gap-2">
           <div>
-            <div class="small-label">Gearing</div>
+            <div class="small-label">SPR</div>
             <div class="gear">{{ s.front_sprocket }}/{{ s.rear_sprocket }} <small>{{ s|ratio }}</small></div>
           </div>
           <div class="text-center">
-            <div class="small-label">Width F/R</div>
-            <div class="fw-semibold">{{ s.front_width if s.front_width is not none else '—' }} / {{ s.rear_width if s.rear_width is not none else '—' }}</div>
+            <div class="small-label">FTW / RTW</div>
+            <div class="fw-semibold">{{ s.front_width|num }} / {{ s.rear_width|num }}</div>
+          </div>
+          <div class="text-center">
+            <div class="small-label">PSI</div>
+            <div class="fw-semibold">{{ s.front_psi|num }}{% if s.rear_psi != s.front_psi %}/{{ s.rear_psi|num }}{% endif %}</div>
           </div>
           <div class="text-end">
-            <div class="small-label">Best · {{ s.run_count }} run{{ 's' if s.run_count != 1 }}</div>
+            <div class="small-label">Best · {{ s.run_count }}</div>
             <div class="lap best fs-5">{{ s.best_lap|lap }}</div>
           </div>
         </div>
@@ -64,8 +66,7 @@
           <input class="form-check-input" type="checkbox" name="ids" value="{{ s.id }}" form="compare-form" id="cmp-{{ s.id }}">
           <label class="form-check-label muted" for="cmp-{{ s.id }}">Compare</label>
         </div>
-        {{ add_btn('run', 'Run', {'setup_id': s.id}, 'btn-sm btn-outline-rms') }}
-        {{ edit_btn('setup', s) }}{{ delete_btn('setup', s.id, 'setup and its runs') }}
+        {{ edit_btn('setup', s) }}{{ delete_btn('setup', s.id, 'setup') }}
       </div>
     </div>
   </div>

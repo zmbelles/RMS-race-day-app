@@ -1,12 +1,14 @@
 """SQLite storage for the RMS Race Day app."""
 import os
 import re
+import shutil
 import sqlite3
 import time
 
 from flask import g
 
 DB_PATH = os.getenv("RMS_DB_PATH", os.path.join(os.path.dirname(__file__), "rms_race_day.db"))
+SCHEMA_VERSION = 2
 
 CLASSES = [c.strip() for c in os.getenv("KART_CLASSES", "LO206,Ignite Sr").split(",") if c.strip()]
 SESSIONS = ["Practice", "Qualifying", "Heat", "Prefinal", "Final"]
@@ -14,55 +16,21 @@ TRACK_CONDITIONS = ["Green", "Rubbered in", "Dusty", "Damp", "Wet"]
 EVENT_TYPES = ["Race", "Practice day", "Test day"]
 EVENT_STATUSES = ["Scheduled", "Completed", "Cancelled"]
 
+# Setups and karts stand on their own. A driver always points at exactly one of each,
+# so race-day commands ("24 SPR 61") move the driver to a matching or new setup.
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS drivers (
+CREATE TABLE IF NOT EXISTS tracks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL,
-    number     TEXT,
-    phone      TEXT,
-    email      TEXT,
-    discord_id TEXT,
-    notes      TEXT,
-    active     INTEGER NOT NULL DEFAULT 1,
-    created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS karts (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    driver_id     INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
-    name          TEXT    NOT NULL,
-    kart_class    TEXT    NOT NULL,
-    chassis       TEXT,
-    engine        TEXT,
-    engine_number TEXT,
-    notes         TEXT,
-    created_at    INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS tire_sets (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    kart_id    INTEGER NOT NULL REFERENCES karts(id) ON DELETE CASCADE,
-    name       TEXT    NOT NULL,
-    runs       INTEGER NOT NULL DEFAULT 0,
-    retired    INTEGER NOT NULL DEFAULT 0,
-    notes      TEXT,
-    created_at INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS events (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    name       TEXT    NOT NULL,
-    event_type TEXT    NOT NULL DEFAULT 'Race',
-    track      TEXT,
-    series     TEXT,
-    start_date TEXT    NOT NULL,
-    end_date   TEXT,
-    status     TEXT    NOT NULL DEFAULT 'Scheduled',
+    name       TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    city       TEXT,
+    state      TEXT,
+    target_lap REAL,
     notes      TEXT,
     created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS setups (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    kart_id        INTEGER NOT NULL REFERENCES karts(id) ON DELETE CASCADE,
     name           TEXT    NOT NULL,
-    track          TEXT,
     front_sprocket INTEGER NOT NULL,
     rear_sprocket  INTEGER NOT NULL,
     front_width    REAL,
@@ -79,14 +47,61 @@ CREATE TABLE IF NOT EXISTS setups (
     ballast        TEXT,
     carb_jetting   TEXT,
     clutch         TEXT,
-    conditions     TEXT,
     notes          TEXT,
     created_at     INTEGER NOT NULL,
     updated_at     INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS karts (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT    NOT NULL,
+    kart_class    TEXT    NOT NULL,
+    chassis       TEXT,
+    engine        TEXT,
+    engine_number TEXT,
+    notes         TEXT,
+    created_at    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS drivers (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    number     TEXT    NOT NULL UNIQUE,
+    kart_class TEXT    NOT NULL,
+    kart_id    INTEGER NOT NULL REFERENCES karts(id) ON DELETE RESTRICT,
+    setup_id   INTEGER NOT NULL REFERENCES setups(id) ON DELETE RESTRICT,
+    phone      TEXT,
+    email      TEXT,
+    discord_id TEXT,
+    notes      TEXT,
+    active     INTEGER NOT NULL DEFAULT 1,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS tire_sets (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    kart_id    INTEGER NOT NULL REFERENCES karts(id) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    runs       INTEGER NOT NULL DEFAULT 0,
+    retired    INTEGER NOT NULL DEFAULT 0,
+    notes      TEXT,
+    created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    event_type TEXT    NOT NULL DEFAULT 'Race',
+    track_id   INTEGER REFERENCES tracks(id) ON DELETE SET NULL,
+    series     TEXT,
+    start_date TEXT    NOT NULL,
+    end_date   TEXT,
+    status     TEXT    NOT NULL DEFAULT 'Scheduled',
+    notes      TEXT,
+    created_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS runs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    setup_id        INTEGER NOT NULL REFERENCES setups(id) ON DELETE CASCADE,
+    driver_id       INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+    setup_id        INTEGER REFERENCES setups(id) ON DELETE SET NULL,
+    kart_id         INTEGER REFERENCES karts(id) ON DELETE SET NULL,
+    track_id        INTEGER REFERENCES tracks(id) ON DELETE SET NULL,
     event_id        INTEGER REFERENCES events(id) ON DELETE SET NULL,
     run_date        TEXT    NOT NULL,
     session         TEXT,
@@ -114,10 +129,19 @@ CREATE TABLE IF NOT EXISTS results (
     notes      TEXT,
     created_at INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_karts_driver ON karts(driver_id);
-CREATE INDEX IF NOT EXISTS idx_setups_kart ON setups(kart_id);
+CREATE TABLE IF NOT EXISTS setup_changes (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    driver_id     INTEGER NOT NULL REFERENCES drivers(id) ON DELETE CASCADE,
+    command       TEXT    NOT NULL,
+    from_setup_id INTEGER REFERENCES setups(id) ON DELETE SET NULL,
+    to_setup_id   INTEGER REFERENCES setups(id) ON DELETE SET NULL,
+    created_setup INTEGER NOT NULL DEFAULT 0,
+    created_at    INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_runs_driver ON runs(driver_id);
 CREATE INDEX IF NOT EXISTS idx_runs_setup ON runs(setup_id);
 CREATE INDEX IF NOT EXISTS idx_results_event ON results(event_id);
+CREATE INDEX IF NOT EXISTS idx_changes_driver ON setup_changes(driver_id);
 """
 
 
@@ -129,8 +153,20 @@ def connect(path=DB_PATH):
 
 
 def init_db(path=DB_PATH):
-    with connect(path) as conn:
+    conn = connect(path)
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    has_tables = conn.execute("SELECT COUNT(*) FROM sqlite_master WHERE name = 'drivers'").fetchone()[0]
+    if has_tables and version < SCHEMA_VERSION:
+        # v1 tied setups to karts and karts to drivers. Keep the old file and start fresh.
+        conn.close()
+        backup = path.replace(".db", f".v{version or 1}.bak.db")
+        shutil.move(path, backup)
+        print(f"Old database moved to {backup}; starting a new one.")
+        conn = connect(path)
+    with conn:
         conn.executescript(SCHEMA)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+    conn.close()
 
 
 def get_db():
@@ -148,6 +184,13 @@ def close_db(_exc=None):
 def query(sql, args=(), one=False):
     rows = get_db().execute(sql, args).fetchall()
     return (rows[0] if rows else None) if one else rows
+
+
+def insert(conn, table, **values):
+    values.setdefault("created_at", now())
+    cur = conn.execute(f"INSERT INTO {table} ({', '.join(values)}) VALUES ({', '.join('?' * len(values))})",
+                       tuple(values.values()))
+    return cur.lastrowid
 
 
 def now():
@@ -172,3 +215,10 @@ def fmt_lap(seconds):
         return "—"
     minutes, secs = divmod(seconds, 60)
     return f"{int(minutes)}:{secs:06.3f}" if minutes else f"{secs:.3f}"
+
+
+def fmt_num(value):
+    """3.0 -> '3', 1.25 -> '1.25', None -> '—'."""
+    if value is None:
+        return "—"
+    return f"{value:g}" if isinstance(value, float) else str(value)

@@ -12,7 +12,7 @@
 <div class="rms-card rms-card-body mb-3">
   <div class="d-flex flex-wrap gap-4 align-items-center">
     <div>{{ ui.event_chip(event) }}</div>
-    <div><div class="small-label">Track</div><div class="fw-semibold">{{ event.track or 'TBD' }}</div></div>
+    <div><div class="small-label">Track</div><div class="fw-semibold">{{ event.track_name or 'TBD' }}</div></div>
     <div><div class="small-label">Dates</div><div class="fw-semibold">{{ event.start_date|nice_date }}{% if event.end_date and event.end_date != event.start_date %} – {{ event.end_date|nice_date }}{% endif %}</div></div>
     <div><div class="small-label">Series</div><div class="fw-semibold">{{ event.series or '—' }}</div></div>
     <div><div class="small-label">RMS entries</div><div class="fw-semibold">{{ results|length }}</div></div>
@@ -38,7 +38,7 @@
             {% else %}<span class="muted">—</span>{% endif %}
           </td>
           <td>{% if r.setup_id %}<a href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">{{ r.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
-          <td class="text-end lap">{{ r.best_lap|lap }}</td>
+          <td class="text-end text-nowrap"><span class="lap">{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(target) }}</td>
           <td class="text-end">{{ r.points|int if r.points is not none else '—' }}</td>
           <td class="actions">{{ edit_btn('result', r) }}{{ delete_btn('result', r.id, 'result') }}</td>
         </tr>
@@ -57,14 +57,14 @@
       <thead><tr><th>Session</th><th>Driver</th><th>Setup</th><th>Track cond.</th><th class="text-end">Air / track °F</th><th class="text-end">Laps</th><th class="text-end">Best</th></tr></thead>
       <tbody>
       {% for r in runs %}
-        <tr data-href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">
+        <tr data-href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">
           <td>{{ r.session or '—' }}<div class="small muted">{{ r.run_date|nice_date }}</div></td>
-          <td>{{ r.driver_name }}</td>
-          <td>{{ r.setup_name }} <span class="muted mono small">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span></td>
+          <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
+          <td>{{ r.setup_name or '—' }}{% if r.setup_id %} <span class="muted mono small">{{ r.front_sprocket }}/{{ r.rear_sprocket }}</span>{% endif %}</td>
           <td>{{ r.track_condition or '—' }}</td>
           <td class="text-end">{{ ui.temps(r) }}</td>
           <td class="text-end">{{ r.laps or '—' }}</td>
-          <td class="text-end lap">{{ r.best_lap|lap }}</td>
+          <td class="text-end text-nowrap"><span class="lap">{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(target) }}</td>
         </tr>
       {% else %}
         <tr><td colspan="7"><div class="empty">No runs linked to this event. Pick it in the “Event” field when logging a run.</div></td></tr>
