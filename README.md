@@ -83,8 +83,7 @@ Logging a run adds one run to the chosen tire set and records the set's age on t
 
 ## Logo
 
-`static/img/rms-logo.svg` is a placeholder. Drop the real logo in at the same path (or change the `<img>` in
-`templates/base.html` if it's a PNG).
+`static/img/rms-logo.png` (sidebar, transparent background) and `static/img/favicon.png` (browser tab).
 
 ## Not in the MVP
 

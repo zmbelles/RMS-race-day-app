@@ -56,9 +56,10 @@ a { text-decoration: none; }
   .rms-content { padding: 1rem 1rem 2.5rem; }
 }
 
-.rms-brand { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.25rem 1rem; }
-.rms-logo { height: 34px; width: auto; }
-.rms-brand-text { color: #fff; font-size: 1.35rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.rms-brand { display: flex; align-items: flex-start; justify-content: space-between; padding: 1.1rem 1.1rem .75rem; }
+.rms-brand-link { display: flex; flex-direction: column; align-items: flex-start; gap: .35rem; min-width: 0; }
+.rms-logo { width: 100%; max-width: 200px; height: auto; display: block; }
+.rms-brand-text { color: #fff; font-size: 1rem; font-weight: 700; letter-spacing: .32em; text-transform: uppercase; padding-left: .2rem; }
 .rms-checker {
   height: 8px; margin: 0 1.25rem .75rem; opacity: .9; border-radius: 2px;
   background:
