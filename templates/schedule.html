@@ -5,7 +5,7 @@
 {% block actions %}
   <a class="btn btn-outline-rms" href="{{ url_for('schedule', past=0 if past else 1) }}">
     <i class="bi bi-clock-history"></i> {{ 'Hide past' if past else 'Show past' }}</a>
-  {{ add_btn('event', 'Event', {'status': 'Scheduled'}) }}
+  {% if is_admin() %}{{ add_btn('event', 'Event', {'status': 'Scheduled'}) }}{% endif %}
 {% endblock %}
 {% block content %}
 <div class="row g-4">
@@ -30,7 +30,7 @@
             {% if e.end_date and e.end_date != e.start_date %} · through {{ e.end_date|nice_date }}{% endif %}</div>
           {% if e.notes %}<div class="small mt-1">{{ e.notes }}</div>{% endif %}
         </div>
-        <div class="d-flex flex-column gap-1">{{ edit_btn('event', e) }}{{ delete_btn('event', e.id, 'event') }}</div>
+        {% if is_admin() %}<div class="d-flex flex-column gap-1">{{ edit_btn('event', e) }}{{ delete_btn('event', e.id, 'event') }}</div>{% endif %}
       </div>
     </div>
   {% endfor %}
@@ -41,17 +41,17 @@
 </div>
 <div class="col-xxl-4">
   <div class="rms-card mt-xxl-4">
-    <div class="rms-card-head"><h2><i class="bi bi-geo-alt"></i> Tracks</h2>{{ add_btn('track', 'Track', cls='btn-sm btn-outline-rms') }}</div>
+    <div class="rms-card-head"><h2><i class="bi bi-geo-alt"></i> Tracks</h2>{% if is_admin() %}{{ add_btn('track', 'Track', cls='btn-sm btn-outline-rms') }}{% endif %}</div>
     <div class="table-responsive">
       <table class="table table-rms">
-        <thead><tr><th>Track</th><th class="text-end">Good lap</th><th class="text-end">RMS best</th><th></th></tr></thead>
+        <thead><tr><th>Track</th>{% if is_admin() %}<th class="text-end">Good lap</th><th class="text-end">RMS best</th><th></th>{% endif %}</tr></thead>
         <tbody>
         {% for t in tracks %}
           <tr>
             <td><div class="fw-semibold">{{ t.name }}</div><div class="small muted">{{ [t.city, t.state]|select|join(', ') or '—' }}</div></td>
-            <td class="text-end lap">{{ t.target_lap|lap }}</td>
+            {% if is_admin() %}<td class="text-end lap">{{ t.target_lap|lap }}</td>
             <td class="text-end text-nowrap"><span class="lap best">{{ t.best_lap|lap }}</span>{{ t.best_lap|delta(t.target_lap) }}</td>
-            <td class="actions">{{ edit_btn('track', t) }}{{ delete_btn('track', t.id, 'track') }}</td>
+            <td class="actions">{{ edit_btn('track', t) }}{{ delete_btn('track', t.id, 'track') }}</td>{% endif %}
           </tr>
         {% else %}
           <tr><td colspan="4"><div class="empty">No tracks yet.</div></td></tr>

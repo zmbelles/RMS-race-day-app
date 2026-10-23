@@ -3,7 +3,7 @@
 {% macro form_modal(key, spec, opts) %}
 <div class="modal fade rms-modal" id="modal-{{ key }}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered {{ 'modal-xl' if spec.size == 'xl' else 'modal-lg' }}">
-    <form class="modal-content" method="post" action="{{ url_for('save', key=key) }}" data-form-key="{{ key }}">
+    <form class="modal-content" method="post" action="{{ url_for('save', key=key) }}" data-form-key="{{ key }}">{{ csrf_field() }}
       <div class="modal-header">
         <h5 class="modal-title"><span data-mode>Add</span> {{ spec.title|lower }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -73,7 +73,7 @@
 {% endmacro %}
 
 {% macro delete_btn(key, id, what, next=None, cls='btn-icon text-danger') %}
-<form method="post" action="{{ url_for('delete', key=key, record_id=id) }}" class="d-inline" data-confirm="Delete this {{ what }}? This can’t be undone.">
+<form method="post" action="{{ url_for('delete', key=key, record_id=id) }}" class="d-inline" data-confirm="Delete this {{ what }}? This can’t be undone.">{{ csrf_field() }}
   {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   <button class="btn {{ cls }}" title="Delete"><i class="bi bi-trash3"></i></button>
 </form>

@@ -30,7 +30,7 @@
     <div class="muted">{{ c.created_at|ago }}{% if c.from_name %} · from {{ c.from_name }}{% endif %}</div>
   </div>
   {% if c.undoable %}
-  <form method="post" action="{{ url_for('undo_change', change_id=c.id) }}">
+  <form method="post" action="{{ url_for('undo_change', change_id=c.id) }}">{{ csrf_field() }}
     <button class="btn btn-sm btn-outline-rms" title="Undo"><i class="bi bi-arrow-counterclockwise"></i></button>
   </form>
   {% endif %}

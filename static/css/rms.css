@@ -306,3 +306,17 @@ a { text-decoration: none; }
 .results-grid input[name^=points_] { width: 72px; }
 .results-grid select { min-width: 220px; }
 .num-sm { font-family: "Barlow Condensed", sans-serif; font-style: italic; font-weight: 800; color: var(--rms-red); font-size: 1.1rem; }
+
+/* ---------- auth ---------- */
+.rms-signout { background: none; border: 0; padding: 0; color: #9a9aa6; font-size: .82rem; display: inline-flex; align-items: center; gap: .35rem; }
+.rms-signout:hover { color: #fff; }
+.rms-login { min-height: 100vh; display: grid; place-items: center; padding: 1.5rem 1rem;
+  background: radial-gradient(120% 90% at 100% 0%, rgba(225, 6, 0, .35), transparent 55%), var(--rms-black); }
+.rms-login-card { width: 100%; max-width: 380px; background: #fff; border-radius: 18px; padding: 2rem 1.75rem 1.5rem;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .45); border-top: 5px solid var(--rms-red); }
+.rms-login-logo { display: block; width: 220px; max-width: 80%; margin: 0 auto 1.25rem; }
+.rms-login-card h1 { font-family: "Barlow Condensed", sans-serif; text-transform: uppercase; font-weight: 700; font-size: 1.6rem; text-align: center; margin: 0 0 1.25rem; }
+.rms-login-card .form-control { height: 46px; border-radius: 12px; }
+.rms-login-public { text-align: center; margin-top: 1.25rem; font-size: .85rem; }
+.rms-login-public a { color: #cfcfd6; }
+.rms-login-public a:hover { color: #fff; }

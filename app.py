@@ -4,15 +4,16 @@ import os
 import sqlite3
 from collections import OrderedDict
 
-from flask import Flask, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, flash, g, jsonify, redirect, render_template, request, url_for
 from markupsafe import Markup, escape
 
+import auth
 import commands
 import db
 from db import fmt_lap, fmt_num, now, parse_lap, query
 
 app = Flask(__name__)
-app.secret_key = os.getenv("SECRET_KEY", "rms-dev-only")
+auth.init_app(app)
 app.teardown_appcontext(db.close_db)
 app.jinja_env.filters["lap"] = fmt_lap
 app.jinja_env.filters["num"] = fmt_num
@@ -456,6 +457,10 @@ def race_detail(event_id):
     event = query(EVENT_SQL + " WHERE e.id = ?", (event_id,), one=True) or abort(404)
     results = query(RESULT_SQL + " WHERE res.event_id = ? ORDER BY res.kart_class, res.dnf, "
                     "res.finish_pos IS NULL, res.finish_pos", (event_id,))
+    if not g.admin:
+        # Public view: results only. Setups, sessions and target laps stay with the team.
+        return render_template("race_detail.html", event=event, results=results, runs=[], grid=[], setups=[],
+                               target=None, enter=False)
     runs = query(RUN_SQL + " WHERE r.event_id = ? ORDER BY r.run_date, r.session, r.best_lap", (event_id,))
     target = query("SELECT target_lap FROM tracks WHERE id = ?", (event["track_id"],), one=True)
     # One grid row per active driver (plus anyone already entered), prefilled with their result.

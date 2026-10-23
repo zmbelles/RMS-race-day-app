@@ -14,7 +14,7 @@ py -m venv .venv
 .venv\Scripts\python app.py         # http://localhost:5000
 ```
 
-`python seed.py --reset` wipes the database and reseeds it.
+`python seed.py --reset` wipes the database and reseeds it. To sign in locally, set `ADMIN_PASSWORD_HASH` first (see *Sign in*); in PowerShell use single quotes: `$env:ADMIN_PASSWORD_HASH = 'scrypt:...'`.
 
 ## Bring over the Discord bot's data
 
@@ -25,6 +25,48 @@ py -m venv .venv
 Only reads the bot's file. Each Discord user becomes a driver named `Discord user 1234` with number `D1234`
 (rename and renumber them on the Drivers page); their latest setup becomes their current one. Each class + chassis
 becomes a kart and each track name a track. Setups, runs and tire sets come across. Other parts are skipped. Safe to run again.
+
+## Sign in
+
+There's one team login. Signed out, anyone can see the **Schedule** and **Race results** (finishes,
+qualifying, best laps, points; no setups, sessions or tuning). Signed in, you see and can change everything.
+
+The password is never stored in the code or database, only as a hash in an environment variable:
+
+```bash
+.venv\Scripts\python auth.py
+```
+
+It asks for the password (10+ characters) and prints `ADMIN_PASSWORD_HASH='scrypt:…'`. Set that variable where the
+app runs. To change the password, make a new hash and replace it; everyone signed in is signed out.
+
+How it's protected:
+- Signed session cookie (HttpOnly, SameSite=Lax, HTTPS-only in production), lasts 30 days.
+- Every form carries a CSRF token.
+- 5 wrong passwords from one IP locks that IP out for 15 minutes.
+- Pages send `X-Frame-Options`, `nosniff`, and HSTS in production.
+
+## Running in production
+
+1. Generate the password hash (above) and a secret key: `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. Set the environment variables:
+
+   | Var | Value |
+   |---|---|
+   | `RMS_ENV` | `production` (the app refuses to start without the two below) |
+   | `SECRET_KEY` | the random key |
+   | `ADMIN_PASSWORD_HASH` | the hash, quoted |
+   | `RMS_DB_PATH` | a path on persistent storage, e.g. `/data/rms_race_day.db` |
+   | `TRUST_PROXY` | `1` when behind a host's proxy/load balancer (Render, Fly, Railway, nginx) so HTTPS and client IPs are seen correctly |
+
+3. Serve it with a production server, as **one process** (the login lockout is kept in memory):
+
+   ```bash
+   waitress-serve --host 0.0.0.0 --port 8000 --threads 8 app:app
+   ```
+
+4. Put it behind HTTPS. Hosting platforms do this for you; otherwise use a reverse proxy such as Caddy.
+5. Back up the database file. SQLite is a single file, so copying it (while the app is idle) is a full backup.
 
 ## Race-day commands
 
@@ -78,7 +120,10 @@ Logging a run adds one run to the chosen tire set and records the set's age on t
 | `RMS_DB_PATH` | `rms_race_day.db` next to `app.py` |
 | `KART_CLASSES` | `LO206,Ignite Sr` |
 | `TIRE_LIFE_RUNS` | `20` (bar turns amber at 75%, red at 100%) |
-| `SECRET_KEY` | dev value. Set a real one before hosting |
+| `SECRET_KEY` | dev value; required in production |
+| `ADMIN_PASSWORD_HASH` | none; see *Sign in* |
+| `RMS_ENV` | unset; `production` turns on secure cookies and required settings |
+| `TRUST_PROXY` | unset; `1` behind a reverse proxy |
 | `PORT` | `5000` |
 
 ## Logo
@@ -87,7 +132,6 @@ Logging a run adds one run to the chosen tire set and records the set's age on t
 
 ## Not in the MVP
 
-- Logins: everyone gets the admin view. Add auth before putting this on the internet.
-- Driver-facing views.
+- Separate logins per person, or driver-facing views.
 - Older databases: the app moves a pre-commands database aside (`rms_race_day.v1.bak.db`) and starts fresh.
 - Live sharing with the Discord bot. They use separate databases; use the import script for now.
