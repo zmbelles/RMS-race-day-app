@@ -5,7 +5,8 @@ environment variable, so nothing secret is stored in the code or the database. M
 
     python auth.py
 
-Logged out, visitors can see the schedule and race results. Everything else needs the login.
+Signed out, visitors see the home page, schedule, race results, standings and the driver list.
+Everything else needs the login.
 """
 import getpass
 import hashlib
@@ -18,11 +19,22 @@ from flask import abort, flash, g, redirect, render_template, request, session, 
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
-PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "")
+def _password_hash():
+    """ADMIN_PASSWORD_HASH, or the contents of the file ADMIN_PASSWORD_HASH_FILE names (simpler on a server,
+    since the hash contains '$' characters that config files and shells like to expand)."""
+    path = os.getenv("ADMIN_PASSWORD_HASH_FILE")
+    if path and os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            return f.read().strip()
+    return os.getenv("ADMIN_PASSWORD_HASH", "")
+
+
+PASSWORD_HASH = _password_hash()
 PRODUCTION = os.getenv("RMS_ENV", "").lower() == "production"
 
 # Pages anyone can open. Everything else redirects to the login page.
-PUBLIC_ENDPOINTS = {"login", "logout", "static", "races", "race_detail", "schedule"}
+PUBLIC_ENDPOINTS = {"login", "logout", "static", "races", "races_season", "races_championship", "race_detail",
+                    "schedule", "standings", "drivers", "dashboard"}
 
 MAX_FAILURES = 5
 LOCKOUT_SECONDS = 15 * 60
@@ -46,6 +58,14 @@ def csrf_token():
 
 def csrf_field():
     return Markup(f'<input type="hidden" name="csrf_token" value="{csrf_token()}">')
+
+
+def safe_next(target):
+    """A redirect target on this site only: a path like '/races/3', never '//host' or '/\\host'."""
+    target = (target or "").strip()
+    if not target.startswith("/") or target.startswith("//") or "\\" in target:
+        return None
+    return target
 
 
 def _client_ip():
@@ -98,8 +118,6 @@ def init_app(app):
             return None
         if request.method != "GET" or request.endpoint == "preview_command":
             abort(403)
-        if request.endpoint == "dashboard":
-            return redirect(url_for("schedule"))
         return redirect(url_for("login", next=request.full_path.rstrip("?")))
 
     @app.after_request
@@ -113,9 +131,7 @@ def init_app(app):
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        nxt = request.values.get("next") or ""
-        if not nxt.startswith("/") or nxt.startswith("//"):
-            nxt = url_for("dashboard")
+        nxt = safe_next(request.values.get("next")) or url_for("dashboard")
         if g.admin:
             return redirect(nxt)
         error = None
@@ -139,7 +155,7 @@ def init_app(app):
     def logout():
         session.clear()
         flash("Signed out", "secondary")
-        return redirect(url_for("schedule"))
+        return redirect(url_for("dashboard"))
 
 
 if __name__ == "__main__":

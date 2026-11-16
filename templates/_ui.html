@@ -2,14 +2,23 @@
 <span class="avatar {{ cls }}">{{ number if number else (name.split()|map('first')|join)[:2]|upper }}</span>
 {%- endmacro %}
 
+{# A result out of the classification: DNF, DNS or DSQ. #}
+{% macro out(r) -%}{{ r.classification if r.classification in ('DNF', 'DNS', 'DSQ') else 'DNS' if (r.notes or '').strip().upper() == 'DNS' else 'DNF' }}{%- endmacro %}
+
+{# A penalty marker after a position: PEN +2, with the reason on hover. #}
+{% macro pen(r) -%}
+{% if r.classification == 'PEN' %}<button type="button" class="pen-chip" data-bs-toggle="popover" data-bs-trigger="focus" data-bs-placement="top"
+  data-bs-title="Penalty" data-bs-content="{% if r.penalty_positions %}{{ r.penalty_positions }} position{{ 's' if r.penalty_positions != 1 }} lost{% else %}Positions lost not recorded{% endif %}{% if r.penalty_reason %} · {{ r.penalty_reason }}{% endif %}">PEN{% if r.penalty_positions %} +{{ r.penalty_positions }}{% endif %}</button>{% endif %}
+{%- endmacro %}
+
 {% macro pos(r) -%}
-{% if r.dnf %}<span class="pos">DNF</span>
-{% elif r.finish_pos %}<span class="pos {{ 'p%d'|format(r.finish_pos) if r.finish_pos <= 3 else '' }}">{{ r.finish_pos }}</span>
+{% if r.dnf %}<span class="pos out">{{ out(r) }}</span>
+{% elif r.finish_pos %}<span class="pos {{ 'p%d'|format(r.finish_pos) if r.finish_pos <= 3 else '' }}">{{ r.finish_pos|ordinal }}</span>{{ pen(r) }}
 {% else %}<span class="muted">—</span>{% endif %}
 {%- endmacro %}
 
 {% macro event_chip(e) -%}
-<span class="chip {{ 'red' if e.event_type == 'Race' else 'dark' if e.event_type == 'Test day' else '' }}">{{ e.event_type }}</span>
+<span class="chip {{ 'red' if e.event_type == 'Race' else 'dark' if e.event_type == 'RMS test day' else '' }}">{{ e.event_type }}</span>
 {%- if e.status == 'Completed' %} <span class="chip green"><i class="bi bi-check2"></i> Done</span>
 {%- elif e.status == 'Cancelled' %} <span class="chip">Cancelled</span>{% endif %}
 {%- endmacro %}
@@ -37,13 +46,63 @@
 </div>
 {%- endmacro %}
 
+{# What to type for an entry: its number, plus the class when that number is used in another class too. #}
+{% macro cmd(d) -%}{{ d.number }}{% if d.number_shared and d.number_shared > 1 %} {{ d.kart_class|lower }}{% endif %}{%- endmacro %}
+
 {% macro lineup_cells(d) -%}
-<td data-cmd="{{ d.number }} SPR " title="Click to change rear sprocket">{{ d.rear_sprocket }}</td>
-<td data-cmd="{{ d.number }} FTW " title="Click to change front track width">{{ d.front_width|num }}</td>
-<td data-cmd="{{ d.number }} RTW " title="Click to change rear track width">{{ d.rear_width|num }}</td>
-<td data-cmd="{{ d.number }} PSI " title="Click to change tire pressure">{{ d.psi|num }}</td>
+<td data-cmd="{{ cmd(d) }} SPR " title="Click to change rear sprocket">{{ d.rear_sprocket }}</td>
+<td data-cmd="{{ cmd(d) }} FTW " title="Click to change front track width">{{ d.front_width|num }}</td>
+<td data-cmd="{{ cmd(d) }} RTW " title="Click to change rear track width">{{ d.rear_width|num }}</td>
+<td data-cmd="{{ cmd(d) }} PSI " title="Click to change tire pressure">{{ d.psi|num }}</td>
+<td data-cmd="{{ cmd(d) }} FRH " title="Click to change front ride height (shims above/below)">{{ d.front_shims_above|shims }}</td>
+{%- endmacro %}
+
+{# The entry behind a lineup row, for the Swap class form. #}
+{% macro entry_record(d) -%}
+{{ {'id': d.entry_id, 'driver_id': d.driver_id, 'kart_class': d.kart_class, 'number': d.number,
+    'kart_id': d.kart_id, 'setup_id': d.setup_id, 'active': d.entry_active}|tojson|forceescape }}
 {%- endmacro %}
 
 {% macro used_by(s) -%}
 {% for n in (s.used_by or '').split(',') if n %}<span class="chip dark me-1">#{{ n }}</span>{% else %}<span class="small muted">Not in use</span>{% endfor %}
 {%- endmacro %}
+
+{% macro place(pos, muted=False) -%}
+<span class="place {{ '' if muted else {1: 'gold', 2: 'silver', 3: 'bronze'}.get(pos, '') }}">{{ pos|ordinal }}</span>
+{%- endmacro %}
+
+{# Retire (with an optional date and note) or reinstate a driver. Records are never deleted. #}
+{% macro retire_controls(d, cls='btn-outline-rms btn-sm') -%}
+{% if d.active %}
+<button type="button" class="btn {{ cls }}" data-bs-toggle="modal" data-bs-target="#retire-{{ d.id }}" title="Retire driver">
+  <i class="bi bi-person-dash"></i> Retire</button>
+<div class="modal fade rms-modal" id="retire-{{ d.id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="{{ url_for('driver_retire', driver_id=d.id) }}">{{ csrf_field() }}
+      <div class="modal-header"><h5 class="modal-title">Retire #{{ d.number }} {{ d.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <p class="small muted">They come off the lineup and the results grid. Every result, standing, run and setup change stays,
+          and you can reinstate them any time.</p>
+        <div class="row g-3">
+          <div class="col-md-5"><label class="form-label" for="left-on-{{ d.id }}">Left on</label>
+            <input class="form-control" type="date" name="left_on" id="left-on-{{ d.id }}"></div>
+          <div class="col-md-7"><label class="form-label" for="left-note-{{ d.id }}">Note</label>
+            <input class="form-control" name="left_note" id="left-note-{{ d.id }}" placeholder="Joined another team"></div>
+        </div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-rms"><i class="bi bi-person-dash"></i> Retire</button></div>
+    </form>
+  </div>
+</div>
+{% else %}
+<form method="post" action="{{ url_for('driver_reinstate', driver_id=d.id) }}" class="d-inline">{{ csrf_field() }}
+  <button class="btn {{ cls }}" title="Bring back onto the team"><i class="bi bi-person-check"></i> Reinstate</button></form>
+{% endif %}
+{%- endmacro %}
+
+{% macro former_chip(d) -%}
+{% if not d.active %}<span class="chip ms-1" title="No longer with RMS{{ ' since ' ~ (d.left_on|nice_date) if d.left_on }}">former</span>{% endif %}
+{%- endmacro %}
+

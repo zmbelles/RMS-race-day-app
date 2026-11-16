@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_forms.html" import add_btn, edit_btn, delete_btn %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ name }}{% endblock %}
+{% block back %}<a class="btn rms-back" href="{{ url_for('races_season', year=year) }}" title="Back to {{ year }} season"><i class="bi bi-arrow-left"></i><span class="d-none d-sm-inline"> Back</span></a>{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('races') }}">Races</a> / <a href="{{ url_for('races_season', year=year) }}">{{ year }}</a>{% endblock %}
+{% block actions %}
+  {% if has_standings %}<a class="btn btn-outline-rms" href="{{ url_for('standings', series=key, season=year) }}"><i class="bi bi-trophy"></i> Standings</a>{% endif %}
+  {% if is_admin() %}{{ add_btn('event', 'Race', {'event_type': 'Race', 'status': 'Scheduled', 'series': '' if key == one_off else key}) }}{% endif %}
+{% endblock %}
+{% block content %}
+<div class="rms-card rms-card-body mb-3">
+  <div class="d-flex flex-wrap gap-4 align-items-center">
+    <div><div class="small-label">Dates</div><div class="fw-semibold">{{ summary.first|nice_date }}{% if summary.last != summary.first %} – {{ summary.last|nice_date }}{% endif %}</div></div>
+    <div><div class="small-label">{{ 'Races' if key == one_off else 'Rounds' }}</div><div class="fw-semibold">{{ summary.completed }} of {{ summary.races }} done</div></div>
+    <div><div class="small-label">RMS wins</div><div class="fw-semibold">{{ summary.wins or '—' }}</div></div>
+    <div><div class="small-label">Best finish</div><div class="fw-semibold">{% if summary.best %}{{ ui.place(summary.best) }}{% else %}—{% endif %}</div></div>
+    <div><div class="small-label">Tracks</div><div class="fw-semibold">{{ summary.tracks|join(' · ') }}</div></div>
+  </div>
+</div>
+
+<div class="row g-3">
+{% for e in races %}
+  <div class="col-md-6 col-xxl-4">
+    <div class="rms-card hoverable h-100 d-flex flex-column">
+      <a href="{{ url_for('race_detail', event_id=e.id) }}" class="rms-card-body text-reset flex-grow-1">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            {% if key != one_off %}<span class="chip dark">R{{ loop.index }}</span>{% endif %}
+            {{ ui.event_chip(e) }}
+          </div>
+          <div class="small muted text-end">{{ e.start_date|nice_date }}</div>
+        </div>
+        <div class="fs-5 fw-bold lh-sm mb-1">{{ e.name }}</div>
+        <div class="muted small mb-3"><i class="bi bi-geo-alt"></i> {{ e.track_name or 'Track TBD' }}{% if e.sessions %} · {{ e.sessions }}{% endif %}</div>
+        <div class="d-flex gap-4">
+          <div><div class="small-label">RMS entries</div><div class="fs-5 fw-bold">{{ e.entries }}</div></div>
+          <div><div class="small-label">Best finish</div><div class="fs-5 fw-bold">{% if e.best_finish %}{{ ui.place(e.best_finish) }}{% else %}—{% endif %}</div></div>
+          <div><div class="small-label">Fast lap</div><div class="fs-5 lap">{{ e.fast_lap|lap }}</div></div>
+        </div>
+        {% if e.top_driver and e.best_finish %}<div class="small mt-2"><i class="bi bi-trophy text-warning"></i> Top RMS: <strong>{{ e.top_driver }}</strong></div>{% endif %}
+      </a>
+      {% if is_admin() %}
+      <div class="d-flex justify-content-end gap-1 px-3 pb-3">
+        <a class="btn btn-sm btn-outline-rms" href="{{ url_for('race_detail', event_id=e.id, enter=1) }}"><i class="bi bi-list-ol"></i> Results</a>
+        {{ edit_btn('event', e) }}{{ delete_btn('event', e.id, 'race and its results') }}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

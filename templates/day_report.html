@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Day report{% endblock %}
+{% block back %}<a class="btn rms-back" href="{{ url_for('raceday', event=event.id) }}" title="Back to Race day"><i class="bi bi-arrow-left"></i><span class="d-none d-sm-inline"> Back</span></a>{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('raceday', event=event.id) }}">Race day</a> / {{ event.name }}{% endblock %}
+{% block actions %}
+  <button type="button" class="btn btn-outline-rms" data-copy-target="#day-report-text"><i class="bi bi-clipboard"></i> <span>Copy</span></button>
+  <a class="btn btn-rms" href="{{ url_for('raceday_report', event_id=event.id, day=day, download=1) }}"><i class="bi bi-download"></i> Download .md</a>
+{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <ul class="nav nav-pills nav-pills-rms">
+    {% for d in days %}
+      <li class="nav-item"><a class="nav-link {{ 'active' if d == day }}" href="{{ url_for('raceday_report', event_id=event.id, day=d) }}">
+        {{ d|weekday }}{% if d in logged %} <i class="bi bi-stopwatch small" title="Runs logged"></i>{% endif %}</a></li>
+    {% endfor %}
+  </ul>
+  <span class="small muted ms-auto">Copy or download this and paste it into an AI chat for a summary and setup suggestions.</span>
+</div>
+<div class="rms-card">
+  <pre class="day-report mb-0" id="day-report-text">{{ text }}</pre>
+</div>
+{% endblock %}

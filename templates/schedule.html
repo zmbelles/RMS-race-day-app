@@ -44,14 +44,16 @@
     <div class="rms-card-head"><h2><i class="bi bi-geo-alt"></i> Tracks</h2>{% if is_admin() %}{{ add_btn('track', 'Track', cls='btn-sm btn-outline-rms') }}{% endif %}</div>
     <div class="table-responsive">
       <table class="table table-rms">
-        <thead><tr><th>Track</th>{% if is_admin() %}<th class="text-end">Good lap</th><th class="text-end">RMS best</th><th></th>{% endif %}</tr></thead>
+        <thead><tr><th>Track</th>{% if is_admin() %}<th class="text-end">Good lap</th><th class="text-end">RMS best</th><th></th>
+          {% else %}<th class="text-center" title="RMS wins here, all time">Wins</th><th class="text-center" title="RMS podiums here, all time">Podiums</th>{% endif %}</tr></thead>
         <tbody>
         {% for t in tracks %}
           <tr>
             <td><div class="fw-semibold">{{ t.name }}</div><div class="small muted">{{ [t.city, t.state]|select|join(', ') or '—' }}</div></td>
             {% if is_admin() %}<td class="text-end lap">{{ t.target_lap|lap }}</td>
             <td class="text-end text-nowrap"><span class="lap best">{{ t.best_lap|lap }}</span>{{ t.best_lap|delta(t.target_lap) }}</td>
-            <td class="actions">{{ edit_btn('track', t) }}{{ delete_btn('track', t.id, 'track') }}</td>{% endif %}
+            <td class="actions">{{ edit_btn('track', t) }}{{ delete_btn('track', t.id, 'track') }}</td>
+            {% else %}<td class="text-center fw-bold">{{ t.wins or '—' }}</td><td class="text-center">{{ t.podiums or '—' }}</td>{% endif %}
           </tr>
         {% else %}
           <tr><td colspan="4"><div class="empty">No tracks yet.</div></td></tr>

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}RMS Kart & Performance{% endblock %}
+{# Public home page: the season at a glance. Results only; nothing about setups, karts or the team's notes. #}
+{% block content %}
+{% if not summary %}
+  <div class="rms-card"><div class="empty"><i class="bi bi-flag"></i>No results yet this season.</div></div>
+{% else %}
+{% set t = summary.totals %}
+<div class="rms-hero mb-3 home-hero">
+  <div class="label">Season at a glance</div>
+  <h2>{{ summary.season }} season</h2>
+  <div class="home-totals">
+    {% for label, value, cls in [('Wins', t.wins, 'gold'), ('Podiums', t.podiums, ''), ('Top 5s', t.top5s, ''), ('Races', t.races, '')] %}
+    <div class="home-total {{ cls }}"><div class="v">{{ value }}</div><div class="l">{{ label }}</div></div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if summary.honours %}
+<div class="row g-3 mb-3">
+  {% for h in summary.honours %}
+  <div class="col-md-6 col-xl-4">
+    <div class="rms-card rms-card-body h-100 honour p{{ h.position }}">
+      <div class="honour-icon"><i class="bi bi-trophy-fill"></i></div>
+      <div class="min-w-0">
+        <div class="honour-title">{{ h.honour }}</div>
+        <div class="fw-bold fs-5">{{ h.name }}</div>
+        <div class="small muted">{{ summary.season }} {{ h.championship }}{% if h.kart_class %} {{ h.kart_class }}{% endif %}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="rms-card h-100">
+      <div class="rms-card-head"><h2><i class="bi bi-bar-chart"></i> {{ summary.season }} by driver</h2>
+        <a class="small" href="{{ url_for('races_season', year=summary.season|int) }}">All {{ summary.season }} races →</a></div>
+      <div class="table-responsive">
+        <table class="table table-rms">
+          <thead><tr><th>Driver</th><th class="text-center">Wins</th><th class="text-center">Podiums</th><th class="text-center">Top 5s</th><th class="text-center">Races</th></tr></thead>
+          <tbody>
+          {% for d in summary.drivers %}
+            <tr>
+              <td><div class="d-flex align-items-center gap-2">{{ ui.avatar(d.name, None, 'red' if d.active else '') }}<span class="fw-semibold text-nowrap">{{ d.name }}</span>{{ ui.former_chip(d) }}</div></td>
+              <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
+              <td class="text-center">{{ d.podiums or '—' }}</td>
+              <td class="text-center">{{ d.top5s or '—' }}</td>
+              <td class="text-center">{{ d.races }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="rms-card h-100">
+      <div class="rms-card-head"><h2><i class="bi bi-calendar3"></i> Next up</h2><a class="small" href="{{ url_for('schedule') }}">Schedule →</a></div>
+      <div class="rms-card-body py-2">
+        {% for e in upcoming %}
+          <a class="home-next text-reset" href="{{ url_for('race_detail', event_id=e.id) }}">
+            <div class="fw-semibold">{{ e.name }}</div>
+            <div class="small muted">{{ e.start_date|nice_date }}{% if e.end_date and e.end_date != e.start_date %} – {{ e.end_date|nice_date }}{% endif %} · {{ e.track_name or 'Track TBD' }}</div>
+          </a>
+        {% else %}<div class="empty py-3">Nothing on the calendar yet.</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

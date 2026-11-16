@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_forms.html" import add_btn %}
+{% import "_ui.html" as ui %}
+{% block title %}{{ year }} season{% endblock %}
+{% block back %}<a class="btn rms-back" href="{{ url_for('races') }}" title="Back to all seasons"><i class="bi bi-arrow-left"></i><span class="d-none d-sm-inline"> Back</span></a>{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('races') }}">Races</a> / {{ year }}{% endblock %}
+{% block actions %}
+  {% if is_admin() %}{{ add_btn('event', 'Race', {'event_type': 'Race', 'status': 'Scheduled'}) }}{% endif %}
+{% endblock %}
+{% block content %}
+{% if years|length > 1 %}
+<ul class="nav nav-pills nav-pills-rms mb-3">
+  {% for y in years %}<li class="nav-item"><a class="nav-link {{ 'active' if y|int == year }}" href="{{ url_for('races_season', year=y) }}">{{ y }}</a></li>{% endfor %}
+</ul>
+{% endif %}
+<div class="row g-3">
+{% for c in championships %}
+  <div class="col-md-6 col-xxl-4">
+    <div class="rms-card hoverable h-100 d-flex flex-column">
+      <a href="{{ url_for('races_championship', year=year, championship=c.key) }}" class="rms-card-body text-reset flex-grow-1">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+          <div class="fs-5 fw-bold lh-sm">{{ c.name }}</div>
+          {% if c.completed == c.races %}<span class="chip green"><i class="bi bi-check2"></i> Done</span>
+          {% elif c.completed %}<span class="chip amber">{{ c.completed }}/{{ c.races }}</span>
+          {% else %}<span class="chip">Upcoming</span>{% endif %}
+        </div>
+        <div class="small muted mb-3">
+          {{ c.first|nice_date }}{% if c.last != c.first %} – {{ c.last|nice_date }}{% endif %}
+          · {{ c.races }} {{ 'race' if c.key == one_off else 'round' }}{{ 's' if c.races != 1 }}
+        </div>
+        <div class="d-flex gap-4 mb-3">
+          <div><div class="small-label">RMS wins</div><div class="fs-5 fw-bold">{{ c.wins or '—' }}</div></div>
+          <div><div class="small-label">Best finish</div><div class="fs-5 fw-bold">{% if c.best %}{{ ui.place(c.best) }}{% else %}—{% endif %}</div></div>
+        </div>
+        <div class="d-flex flex-wrap gap-1">{% for t in c.tracks %}<span class="chip">{{ t }}</span>{% endfor %}</div>
+        {% if c.upcoming %}<div class="small mt-2"><i class="bi bi-calendar-event text-danger"></i> Next: <strong>{{ c.upcoming.name }}</strong> · {{ c.upcoming.start_date|nice_date }}</div>{% endif %}
+      </a>
+      <div class="d-flex justify-content-end gap-1 px-3 pb-3">
+        {% if c.standings %}<a class="btn btn-sm btn-outline-rms" href="{{ url_for('standings', series=c.key, season=year) }}"><i class="bi bi-trophy"></i> Standings</a>{% endif %}
+        <a class="btn btn-sm btn-dark-rms" href="{{ url_for('races_championship', year=year, championship=c.key) }}">{{ 'Races' if c.key == one_off else 'Rounds' }} <i class="bi bi-arrow-right"></i></a>
+      </div>
+    </div>
+  </div>
+{% endfor %}
+</div>
+{% endblock %}

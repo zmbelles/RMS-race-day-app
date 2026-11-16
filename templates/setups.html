@@ -4,13 +4,15 @@
 {% block title %}Setups{% endblock %}
 {% block actions %}
   <a class="btn btn-outline-rms" href="{{ url_for('setup_compare') }}"><i class="bi bi-layout-split"></i> Compare</a>
-  {{ add_btn('setup', 'New setup') }}
+  {{ add_btn('setup', 'New setup', {'track_id': f.track|int} if f.track else None) }}
 {% endblock %}
 {% block content %}
 <div class="row g-3 mb-3">
-  <div class="col-xl-7">
+  <div class="col-12">
     <form class="rms-card rms-card-body filter-bar h-100" method="get">
       <input class="form-control" name="q" value="{{ f.q }}" placeholder="Search tire, notes">
+      <select class="form-select" name="track"><option value="">All tracks</option>
+        {% for t in tracks %}<option value="{{ t.id }}" {{ 'selected' if f.track == t.id|string }}>{{ t.name }}</option>{% endfor %}</select>
       <select class="form-select" name="rear"><option value="">Any rear sprocket</option>
         {% for r in rears %}<option value="{{ r }}" {{ 'selected' if f.rear == r|string }}>{{ r }}T</option>{% endfor %}</select>
       <div class="form-check form-switch ms-1">
@@ -21,31 +23,26 @@
       {% if f.values()|select|list %}<a class="btn btn-link" href="{{ url_for('setups') }}">Clear</a>{% endif %}
     </form>
   </div>
-  <div class="col-xl-5">
-    <div class="rms-card rms-card-body h-100" data-gear-calc>
-      <div class="d-flex align-items-center gap-2 mb-2">
-        <div class="small-label me-auto"><i class="bi bi-gear-wide-connected text-danger"></i> Gear calculator</div>
-        <input class="form-control form-control-sm" style="width: 70px" type="number" name="calc_front" value="17" aria-label="Front sprocket">
-        <span class="muted">/</span>
-        <input class="form-control form-control-sm" style="width: 70px" type="number" name="calc_rear" value="60" aria-label="Rear sprocket">
-      </div>
-      <div class="gear-calc" data-gear-out></div>
-    </div>
-  </div>
 </div>
 
 <form method="get" action="{{ url_for('setup_compare') }}" id="compare-form"></form>
 <div class="row g-3">
 {% for s in setups %}
+  {% if loop.changed(s.track_id) %}
+  <div class="col-12"><div class="rms-month mt-2 mb-0">{{ s.track_name or 'No track' }}</div></div>
+  {% endif %}
   <div class="col-md-6 col-xxl-4">
     <div class="rms-card hoverable setup-card h-100 d-flex flex-column">
       <a href="{{ url_for('setup_detail', setup_id=s.id) }}" class="rms-card-body text-reset flex-grow-1">
-        <div class="small-label mb-2">Setup #{{ s.id }}{% if s.tire %} · {{ s.tire }}{% endif %}</div>
+        <div class="d-flex justify-content-between align-items-baseline mb-2">
+          <div class="fw-bold fs-5 lh-sm">{{ s.name }}</div>
+          {% if s.tire %}<div class="small muted">{{ s.tire }}</div>{% endif %}
+        </div>
         <div class="mb-3">{{ ui.used_by(s) }}</div>
         <div class="d-flex justify-content-between align-items-end gap-2">
           <div>
             <div class="small-label">SPR</div>
-            <div class="gear">{{ s.rear_sprocket }}T <small>{{ s|ratio }}</small></div>
+            <div class="gear">{{ s.rear_sprocket }}T</div>
           </div>
           <div class="text-center">
             <div class="small-label">FTW / RTW</div>

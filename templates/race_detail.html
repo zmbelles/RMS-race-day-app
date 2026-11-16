@@ -1,11 +1,17 @@
 {% extends "base.html" %}
 {% from "_forms.html" import add_btn, edit_btn, delete_btn %}
+{% from "_weekend.html" import weekend_days, format_modal with context %}
 {% import "_ui.html" as ui %}
 {% block title %}{{ event.name }}{% endblock %}
-{% block eyebrow %}<a href="{{ url_for('races') }}">Races</a> / {{ event.start_date|nice_date }}{% endblock %}
+{% block back %}<a class="btn rms-back" href="{{ url_for('races_championship', year=event|season, championship=event.series or 'one-off') }}" title="Back to {{ event.series or 'One-off races' }}"><i class="bi bi-arrow-left"></i><span class="d-none d-sm-inline"> Back</span></a>{% endblock %}
+{% block eyebrow %}{% set year = event|season %}<a href="{{ url_for('races') }}">Races</a> /
+  <a href="{{ url_for('races_season', year=year) }}">{{ year }}</a> /
+  <a href="{{ url_for('races_championship', year=year, championship=event.series or 'one-off') }}">{{ event.series or 'One-off races' }}</a>{% endblock %}
 {% block actions %}{% if is_admin() %}
-  {{ edit_btn('event', event, 'Edit', 'btn-outline-rms') }}
-  {{ add_btn('run', 'Log run', {'event_id': event.id, 'run_date': event.start_date}, 'btn-dark-rms') }}
+  {{ edit_btn('event', event, 'Edit event', 'btn-outline-rms') }}
+  <a class="btn btn-dark-rms" href="{{ url_for('raceday', event=event.id) }}"><i class="bi bi-broadcast"></i> Race day</a>
+  <button type="button" class="btn btn-outline-rms" data-bs-toggle="modal" data-bs-target="#weekend-format"><i class="bi bi-calendar3-week"></i> Weekend format</button>
+  <button type="button" class="btn btn-outline-rms" data-bs-toggle="modal" data-bs-target="#entry-list"><i class="bi bi-person-lines-fill"></i> Entry list</button>
   <button type="button" class="btn btn-rms" data-bs-toggle="modal" data-bs-target="#results-grid"><i class="bi bi-list-ol"></i> Enter results</button>
 {% endif %}{% endblock %}
 {% block content %}
@@ -14,42 +20,152 @@
     <div>{{ ui.event_chip(event) }}</div>
     <div><div class="small-label">Track</div><div class="fw-semibold">{{ event.track_name or 'TBD' }}</div></div>
     <div><div class="small-label">Dates</div><div class="fw-semibold">{{ event.start_date|nice_date }}{% if event.end_date and event.end_date != event.start_date %} – {{ event.end_date|nice_date }}{% endif %}</div></div>
-    <div><div class="small-label">Series</div><div class="fw-semibold">{{ event.series or '—' }}</div></div>
+    <div><div class="small-label">Series</div><div class="fw-semibold">{{ event.series or 'One-off race' }}</div></div>
     <div><div class="small-label">RMS entries</div><div class="fw-semibold">{{ results|length }}</div></div>
   </div>
   {% if event.notes %}<p class="mt-3 mb-0">{{ event.notes }}</p>{% endif %}
+  {% if weekend %}<div class="mt-3 pt-3 border-top">{{ weekend_days(weekend) }}</div>{% endif %}
 </div>
 
+{% if racing %}
 <div class="rms-card mb-3">
-  <div class="rms-card-head"><h2><i class="bi bi-trophy"></i> Results</h2>
-    {% if is_admin() %}<button type="button" class="btn btn-sm btn-outline-rms" data-bs-toggle="modal" data-bs-target="#results-grid"><i class="bi bi-pencil-square"></i> Edit all</button>{% endif %}</div>
+  <div class="rms-card-head"><h2><i class="bi bi-person-lines-fill"></i> RMS drivers racing <span class="chip">{{ racing|length }}</span></h2></div>
   <div class="table-responsive">
     <table class="table table-rms">
-      <thead><tr><th>Finish</th><th>Driver</th><th>Class</th><th class="text-center">Qualified</th><th class="text-center">+/-</th>{% if is_admin() %}<th>Setup</th>{% endif %}<th class="text-end">Best lap</th><th class="text-end">Pts</th>{% if is_admin() %}<th></th>{% endif %}</tr></thead>
+      <thead><tr><th>#</th><th>Driver</th><th>Class</th></tr></thead>
       <tbody>
-      {% for r in results %}
-        <tr>
-          <td>{{ ui.pos(r) }}</td>
-          <td class="fw-semibold">{% if is_admin() %}<a class="text-reset" href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">{{ r.driver_name }}</a>{% else %}{{ r.driver_name }}{% endif %}{% if r.driver_number %} <span class="muted">#{{ r.driver_number }}</span>{% endif %}</td>
-          <td><span class="chip">{{ r.kart_class or '—' }}</span></td>
-          <td class="text-center">{{ r.qual_pos or '—' }}</td>
-          <td class="text-center">
-            {% if r.qual_pos and r.finish_pos and not r.dnf %}{% set gain = r.qual_pos - r.finish_pos %}
-              <span class="{{ 'text-success' if gain > 0 else 'text-danger' if gain < 0 else 'muted' }} fw-semibold">{{ '+' if gain > 0 }}{{ gain }}</span>
-            {% else %}<span class="muted">—</span>{% endif %}
-          </td>
-          {% if is_admin() %}<td class="small text-nowrap">{% if r.setup_id %}<a href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">{{ r.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
-          <td class="text-end text-nowrap"><span class="lap">{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(target) }}</td>
-          <td class="text-end">{{ r.points|int if r.points is not none else '—' }}</td>
-          {% if is_admin() %}<td class="actions">{{ edit_btn('result', r) }}{{ delete_btn('result', r.id, 'result') }}</td>{% endif %}
-        </tr>
-      {% else %}
-        <tr><td colspan="9"><div class="empty"><i class="bi bi-flag"></i>No results yet.{% if is_admin() %} Use <strong>Enter results</strong> to add everyone at once.{% endif %}</div></td></tr>
+      {% for r in racing %}
+        <tr><td><span class="num-sm">#{{ r.number }}</span></td><td class="fw-semibold text-nowrap">{{ r.name }}</td><td><span class="chip">{{ r.kart_class }}</span></td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% endif %}
+
+{% if is_admin() and (roster or (event.end_date or event.start_date) >= today) %}
+<div class="rms-card mb-3">
+  <div class="rms-card-head flex-wrap">
+    <h2><i class="bi bi-person-lines-fill"></i> Entry list <span class="chip">{{ roster|length }}</span>
+      {% if raceday and raceday.id == event.id %}<span class="chip red ms-1"><i class="bi bi-broadcast"></i> race day</span>{% endif %}</h2>
+    <div class="d-flex gap-1 flex-wrap">
+      {% if roster and not (raceday and raceday.id == event.id) %}
+      <form method="post" action="{{ url_for('race_set_raceday', event_id=event.id) }}">{{ csrf_field() }}
+        <button class="btn btn-sm btn-dark-rms" title="The command bar will read kart numbers from this list"><i class="bi bi-broadcast"></i> Use for race day</button></form>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-outline-rms" data-bs-toggle="modal" data-bs-target="#entry-list"><i class="bi bi-pencil-square"></i> Edit</button>
+    </div>
+  </div>
+  {% if roster %}
+  <div class="table-responsive">
+    <table class="table table-rms">
+      <thead><tr><th>#</th><th>Driver</th><th>Class</th><th>Kart</th><th>Setup</th></tr></thead>
+      <tbody>
+      {% for r in roster %}
+        <tr>
+          <td class="num">{{ r.race_number }}</td>
+          <td class="fw-semibold text-nowrap">{{ r.name }}{% if r.race_number != r.entry_number %} <span class="small muted" title="Usual number in this class">usually #{{ r.entry_number }}</span>{% endif %}</td>
+          <td><span class="chip">{{ r.kart_class }}</span>{% if r.number_shared > 1 %} <span class="chip amber" title="This number is in two classes here; add the class in commands">shared #</span>{% endif %}</td>
+          <td class="small">{{ r.kart_name }}</td>
+          <td class="small">{{ r.setup_name }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty py-3">No one on the entry list yet. Add who's racing, their class and kart numbers, so race-day commands know who each number is.</div>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if separate %}
+<div class="rms-card mb-3">
+  <div class="rms-card-head flex-wrap">
+    <h2><i class="bi bi-trophy"></i> Results</h2>
+    <ul class="nav nav-pills nav-pills-rms" role="tablist">
+      {% for s, rows in by_session %}
+        <li class="nav-item" role="presentation">
+          <button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab" data-bs-target="#race-{{ loop.index }}" type="button" role="tab">{{ s }} <span class="chip ms-1">{{ rows|length }}</span></button>
+        </li>
+      {% endfor %}
+    </ul>
+    {% if is_admin() %}<button type="button" class="btn btn-sm btn-outline-rms" data-bs-toggle="modal" data-bs-target="#results-grid"><i class="bi bi-pencil-square"></i> Edit all</button>{% endif %}
+  </div>
+  <div class="tab-content">
+  {% for s, rows in by_session %}
+    <div class="tab-pane fade {{ 'show active' if loop.first }}" id="race-{{ loop.index }}" role="tabpanel">
+      <div class="small muted px-3 pt-3">{{ s }} is its own race: entered and scored separately.</div>
+      <div class="table-responsive">
+        <table class="table table-rms">
+          <thead><tr><th>Finish</th><th>Driver</th><th>Class</th><th class="text-center">Qual</th>{% if is_admin() %}<th>Setup</th>{% endif %}
+            <th class="text-end">Best lap</th>{% if scored %}<th class="text-end">Points</th>{% endif %}{% if is_admin() %}<th></th>{% endif %}</tr></thead>
+          <tbody>
+          {% for e, x in rows %}
+            <tr>
+              <td>{{ ui.pos(x) }}</td>
+              <td class="fw-semibold text-nowrap">{% if is_admin() %}<a class="text-reset" href="{{ url_for('driver_detail', driver_id=x.driver_id) }}">{{ x.driver_name }}</a>{% else %}{{ x.driver_name }}{% endif %} <span class="muted">#{{ x.driver_number }}</span></td>
+              <td><span class="chip">{{ x.kart_class or '—' }}</span></td>
+              <td class="text-center">{{ x.qual_pos|ordinal if x.qual_pos else '—' }}</td>
+              {% if is_admin() %}<td class="small text-nowrap">{% if x.setup_id %}<a href="{{ url_for('setup_detail', setup_id=x.setup_id) }}">{{ x.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
+              <td class="text-end text-nowrap">{% if x.best_lap %}<span class="lap">{{ x.best_lap|lap }}</span>{{ x.best_lap|delta(target) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+              {% if scored %}<td class="text-end fw-bold">{{ x.points|num if x.points is not none else '—' }}</td>{% endif %}
+              {% if is_admin() %}<td class="actions">{{ edit_btn('result', x) }}{{ delete_btn('result', x.id, s ~ ' result') }}</td>{% endif %}
+            </tr>
+          {% else %}
+            <tr><td colspan="8"><div class="empty">No RMS drivers entered {{ s }}.</div></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% else %}
+<div class="rms-card mb-3">
+  <div class="rms-card-head"><h2><i class="bi bi-trophy"></i> Results</h2>
+    {% if is_admin() %}<button type="button" class="btn btn-sm btn-outline-rms" data-bs-toggle="modal" data-bs-target="#results-grid"><i class="bi bi-pencil-square"></i> Edit all</button>{% endif %}</div>
+  <div class="table-responsive">
+    <table class="table table-rms">
+      <thead><tr><th>Finish</th><th>Driver</th><th>Class</th>
+        {% for s in sessions %}<th class="text-center">{{ s }}</th>{% endfor %}
+        {% if 'Qualifying' not in sessions %}<th class="text-center">Qual</th><th class="text-center">+/-</th>{% endif %}{% if is_admin() %}<th>Setup</th>{% endif %}
+        <th class="text-end">Best lap</th>{% if scored %}<th class="text-end">Points</th>{% endif %}{% if is_admin() %}<th></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for e in results %}
+        {% set r, f = e.row, e.sessions.get(main) %}
+        <tr>
+          <td>{% if f %}{{ ui.pos(f) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="fw-semibold text-nowrap">{% if is_admin() %}<a class="text-reset" href="{{ url_for('driver_detail', driver_id=r.driver_id) }}">{{ r.driver_name }}</a>{% else %}{{ r.driver_name }}{% endif %} <span class="muted">#{{ r.driver_number }}</span></td>
+          <td><span class="chip">{{ r.kart_class or '—' }}</span></td>
+          {% for s in sessions %}{% set x = e.sessions.get(s) %}
+            <td class="text-center session-cell">{% if x %}{% if x.dnf %}{{ ui.out(x) }}{% elif x.finish_pos %}{{ ui.place(x.finish_pos) }}{{ ui.pen(x) }}{% else %}{{ ui.pen(x) or '—' }}{% endif %}{% if x.points is not none %}<small>{{ x.points|num }} pts</small>{% endif %}{% if x.best_lap %}<small class="lap">{{ x.best_lap|lap }}</small>{% endif %}{% else %}<span class="muted">—</span>{% endif %}</td>
+          {% endfor %}
+          {% if 'Qualifying' not in sessions %}
+          <td class="text-center">{{ (f.qual_pos|ordinal if f.qual_pos else '—') if f else '—' }}</td>
+          <td class="text-center">
+            {% if f and f.qual_pos and f.finish_pos and not f.dnf %}{% set gain = f.qual_pos - f.finish_pos %}
+              <span class="{{ 'text-success' if gain > 0 else 'text-danger' if gain < 0 else 'muted' }} fw-semibold">{{ '+' if gain > 0 }}{{ gain }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+          {% endif %}
+          {% if is_admin() %}<td class="small text-nowrap">{% if r.setup_id %}<a href="{{ url_for('setup_detail', setup_id=r.setup_id) }}">{{ r.setup_name }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>{% endif %}
+          <td class="text-end text-nowrap" title="Fastest lap across every session">{% if e.best_lap %}<span class="lap">{{ e.best_lap|lap }}</span>{{ e.best_lap|delta(target) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+          {% if scored %}<td class="text-end fw-bold">{{ e.points|num if e.scored else '—' }}</td>{% endif %}
+          {% if is_admin() %}<td class="actions">
+            {% for name, row in e.ordered %}{{ edit_btn('result', row, name.split()|map('first')|join, 'btn-icon w-auto px-1') }}{% endfor %}
+          </td>{% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ 8 + sessions|length }}"><div class="empty"><i class="bi bi-flag"></i>No results yet.{% if is_admin() %} Use <strong>Enter results</strong> to add everyone at once.{% endif %}</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endif %}
 
 {% if is_admin() %}
 <div class="rms-card">
@@ -76,36 +192,59 @@
   </div>
 </div>
 <div class="modal fade rms-modal" id="results-grid" tabindex="-1" aria-hidden="true" {% if enter %}data-autoshow{% endif %}>
-  <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-xl">
+  <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-xl results-grid-dialog">
     <form class="modal-content" method="post" action="{{ url_for('race_results_save', event_id=event.id) }}">{{ csrf_field() }}
       <div class="modal-header">
         <h5 class="modal-title">Results · {{ event.name }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body p-0">
-        <p class="small muted px-3 pt-3 mb-2">Fill in the drivers who raced. Leave a row blank to skip that driver (or clear a result already entered).</p>
+        <p class="small muted px-3 pt-3 mb-2">Fill in the drivers who raced: for each session ({{ sessions|join(', ') }})
+          their finish, a classification if needed (DNF, DNS, DSQ, or PEN with positions lost and why), points and best lap.
+          Leave a session blank to skip it, or to clear what was entered. Change the session list with the weekend format
+          or by editing the race.</p>
         <div class="table-responsive">
           <table class="table table-rms results-grid mb-0">
-            <thead><tr><th>Driver</th><th>Qual</th><th>Finish</th><th>Best lap</th><th>Pts</th><th class="text-center">DNF</th><th>Setup</th></tr></thead>
+            <thead>
+              <tr><th rowspan="2" class="align-bottom">Driver / class</th><th rowspan="2" class="align-bottom">Kart # that day</th>
+                {% for s in sessions %}<th colspan="4" class="text-center grid-group">{{ s }}</th>{% endfor %}
+                <th rowspan="2" class="align-bottom grid-split">Qual</th><th rowspan="2" class="align-bottom">Setup</th></tr>
+              <tr>{% for s in sessions %}<th class="{{ 'grid-split' if not loop.first }}">Finish</th><th>Class.</th><th>Pts</th><th>Best lap</th>{% endfor %}</tr>
+            </thead>
             <tbody>
-            {% for d, r in grid %}
+            {% for d, e in grid %}
+              {% set any_row, f = e.row, e.sessions.get(main) %}
               <tr>
                 <td class="text-nowrap">
-                  <input type="hidden" name="driver_id" value="{{ d.id }}">
-                  <input type="hidden" name="class_{{ d.id }}" value="{{ r.kart_class if r else d.kart_class }}">
+                  <input type="hidden" name="entry_id" value="{{ d.entry_id }}">
                   <span class="num-sm">#{{ d.number }}</span> {{ d.name }}
+                  <select class="form-select form-select-sm grid-class mt-1" name="class_{{ d.entry_id }}" aria-label="Class run">
+                    {% set ran = any_row.kart_class if any_row and any_row.kart_class else d.kart_class %}
+                    {% for c in classes %}<option {{ 'selected' if c == ran }}>{{ c }}</option>{% endfor %}
+                  </select>
                 </td>
-                <td><input class="form-control form-control-sm" name="qual_{{ d.id }}" type="number" min="1" inputmode="numeric" value="{{ r.qual_pos if r and r.qual_pos is not none }}"></td>
-                <td><input class="form-control form-control-sm" name="finish_{{ d.id }}" type="number" min="1" inputmode="numeric" value="{{ r.finish_pos if r and r.finish_pos is not none }}"></td>
-                <td><input class="form-control form-control-sm" name="lap_{{ d.id }}" inputmode="decimal" placeholder="{{ (target|lap) if target else '45.123' }}"
-                           pattern="^\s*(\d+:)?\d+(\.\d+)?\s*$" value="{{ (r.best_lap|lap) if r and r.best_lap is not none }}"></td>
-                <td><input class="form-control form-control-sm" name="points_{{ d.id }}" type="number" step="0.5" value="{{ (r.points|num) if r and r.points is not none }}"></td>
-                <td class="text-center"><input class="form-check-input" type="checkbox" name="dnf_{{ d.id }}" value="1" {{ 'checked' if r and r.dnf }}></td>
+                <td><input class="form-control form-control-sm grid-kart" name="kart_{{ d.entry_id }}" value="{{ any_row.kart_number if any_row and any_row.kart_number and any_row.kart_number != d.number else (on_list.get(d.entry_id) if on_list.get(d.entry_id) and on_list.get(d.entry_id) != d.number else '') }}" placeholder="{{ d.number }}"></td>
+                {% for s in sessions %}{% set x = e.sessions.get(s) %}
+                  <td class="{{ 'grid-split' if not loop.first }}"><input class="form-control form-control-sm" name="pos{{ loop.index0 }}_{{ d.entry_id }}" type="number" min="1" inputmode="numeric" value="{{ x.finish_pos if x and x.finish_pos is not none }}"></td>
+                  <td class="grid-cls">
+                    <select class="form-select form-select-sm" name="cls{{ loop.index0 }}_{{ d.entry_id }}" data-classification aria-label="{{ s }} classification">
+                      <option value="">—</option>
+                      {% for k in classifications %}<option {{ 'selected' if x and x.classification == k }}>{{ k }}</option>{% endfor %}
+                    </select>
+                    <input type="hidden" name="penpos{{ loop.index0 }}_{{ d.entry_id }}" value="{{ x.penalty_positions if x and x.penalty_positions is not none }}" data-pen-pos>
+                    <input type="hidden" name="penwhy{{ loop.index0 }}_{{ d.entry_id }}" value="{{ x.penalty_reason if x and x.penalty_reason }}" data-pen-why>
+                    <button type="button" class="pen-edit" data-pen-edit data-pen-title="{{ d.name }} · {{ s }}" {{ 'hidden' if not (x and x.classification == 'PEN') }}></button>
+                  </td>
+                  <td><input class="form-control form-control-sm" name="pts{{ loop.index0 }}_{{ d.entry_id }}" type="number" step="0.5" value="{{ (x.points|num) if x and x.points is not none }}"></td>
+                  <td><input class="form-control form-control-sm grid-lap" name="lap{{ loop.index0 }}_{{ d.entry_id }}" inputmode="decimal" placeholder="{{ (target|lap) if target else '45.123' }}"
+                             pattern="^\s*(\d+:)?\d+(\.\d+)?\s*$" value="{{ (x.best_lap|lap) if x and x.best_lap is not none }}"></td>
+                {% endfor %}
+                <td class="grid-split"><input class="form-control form-control-sm" name="qual_{{ d.entry_id }}" type="number" min="1" inputmode="numeric" value="{{ f.qual_pos if f and f.qual_pos is not none }}"></td>
                 <td>
-                  {% set chosen = r.setup_id if r else d.setup_id %}
-                  <select class="form-select form-select-sm" name="setup_{{ d.id }}">
+                  {% set chosen = any_row.setup_id if any_row else d.setup_id %}
+                  <select class="form-select form-select-sm" name="setup_{{ d.entry_id }}">
                     <option value="">—</option>
-                    {% for s in setups %}<option value="{{ s.id }}" {{ 'selected' if s.id == chosen }}>{{ s.name }}</option>{% endfor %}
+                    {% for sid, label in setups %}<option value="{{ sid }}" {{ 'selected' if sid == chosen }}>{{ label }}</option>{% endfor %}
                   </select>
                 </td>
               </tr>
@@ -122,5 +261,7 @@
   </div>
 </div>
 {% endif %}
+{% if is_admin() %}{% from "_entry_list.html" import entry_list_modal with context %}{{ entry_list_modal(event, candidates, on_list, show_roster) }}{% endif %}
+{% if is_admin() %}{{ format_modal(event, days, weekend, kinds) }}{% endif %}
 {% endblock %}
 

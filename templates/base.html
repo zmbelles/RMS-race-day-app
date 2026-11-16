@@ -14,15 +14,19 @@
 <body>
 {% set admin = is_admin() %}
 {% set nav = [
+  ('raceday', 'Race day', 'broadcast', 'Team'),
   ('dashboard', 'Dashboard', 'speedometer2', 'Team'),
   ('drivers', 'Drivers', 'person-badge', 'Team'),
   ('races', 'Races', 'flag', 'Team'),
+  ('standings', 'Standings', 'trophy', 'Team'),
   ('schedule', 'Schedule', 'calendar3', 'Team'),
-  ('garage', 'Garage', 'tools', 'Engineering'),
   ('setups', 'Setups', 'sliders', 'Engineering'),
   ('times', 'Times', 'stopwatch', 'Engineering'),
 ] if admin else [
+  ('dashboard', 'Home', 'house', 'RMS Racing'),
   ('races', 'Race results', 'flag', 'RMS Racing'),
+  ('standings', 'Standings', 'trophy', 'RMS Racing'),
+  ('drivers', 'Drivers', 'person-badge', 'RMS Racing'),
   ('schedule', 'Schedule', 'calendar3', 'RMS Racing'),
 ] %}
 {% set section = request.endpoint.split('_')[0] if request.endpoint else '' %}
@@ -31,7 +35,7 @@
 <div class="rms-shell">
   <aside class="rms-sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="sidebar">
     <div class="rms-brand">
-      <a href="{{ url_for('dashboard' if admin else 'schedule') }}" class="rms-brand-link text-decoration-none">
+      <a href="{{ url_for('dashboard') }}" class="rms-brand-link text-decoration-none">
         <img src="{{ url_for('static', filename='img/rms-logo.png') }}" alt="RMS Kart &amp; Performance" class="rms-logo">
         <span class="rms-brand-text">Race Day</span>
       </a>
@@ -49,7 +53,7 @@
     {% if admin %}
     <div class="rms-nav-actions">
       <div class="rms-nav-label">Quick add</div>
-      <button class="rms-quick" data-form="run"><i class="bi bi-stopwatch"></i> Log run</button>
+      <a class="rms-quick" href="{{ url_for('raceday') }}"><i class="bi bi-broadcast"></i> Race day</a>
       <button class="rms-quick" data-form="setup"><i class="bi bi-sliders"></i> New setup</button>
       <button class="rms-quick" data-form="event"><i class="bi bi-calendar-plus"></i> Add event</button>
     </div>
@@ -69,6 +73,7 @@
   <main class="rms-main">
     <header class="rms-topbar">
       <button class="btn btn-icon d-lg-none" data-bs-toggle="offcanvas" data-bs-target="#sidebar" aria-label="Menu"><i class="bi bi-list"></i></button>
+      {% block back %}{% endblock %}
       <div class="flex-grow-1 min-w-0">
         <div class="rms-eyebrow">{% block eyebrow %}RMS Racing{% endblock %}</div>
         <h1 class="rms-title">{% block heading %}{{ self.title() }}{% endblock %}</h1>
@@ -77,14 +82,23 @@
       <form class="rms-cmd" method="post" action="{{ url_for('run_command') }}" data-cmd-form autocomplete="off">{{ csrf_field() }}
         <input type="hidden" name="next" value="{{ request.full_path }}">
         <i class="bi bi-terminal rms-cmd-icon"></i>
-        <input class="form-control" name="q" placeholder="24 SPR 61 · 9 PSI 30 · 13 FTW 1.5" aria-label="Race-day command"
+        <input class="form-control" name="q" placeholder="24 SPR 61 · 24 9 13 PSI 31 · 77 heavy FRH 4" aria-label="Race-day command"
                spellcheck="false" autocapitalize="characters">
         <kbd class="rms-cmd-kbd d-none d-xl-inline">/</kbd>
         <button type="button" class="rms-cmd-help" data-bs-toggle="popover" data-bs-placement="bottom" data-bs-html="true"
                 data-bs-trigger="focus" title="Race-day commands" aria-label="Command help"
-                data-bs-content="<code>24 SPR 61</code> rear sprocket<br><code>24 FTW 1.5</code> front track width<br><code>24 RTW 0.75</code> rear track width<br><code>24 PSI 30</code> tire pressure<br><code>24 SPR +1</code> relative change<br><code>24 SPR 61 PSI 30; 9 RTW 1</code> several at once<br><code>UNDO</code> revert the last change<hr class='my-2'>Moves the driver to a matching setup, or makes a new one."><i class="bi bi-question-circle"></i></button>
+                data-bs-content="<code>24 SPR 61</code> rear sprocket<br><code>24 9 13 PSI 31</code> several karts at once<br><code>24 FTW 1.5</code> front track width<br><code>24 RTW 0.75</code> rear track width<br><code>24 PSI 30</code> tire pressure<br><code>24 FRH 4</code> front ride height: 4 shims above, 2 below<br><code>24 TRK norway</code> take the setup to another track<br><code>77 heavy SPR 61</code> name the class when a # is in two<br><code>24 SPR +1</code> relative change<br><code>24 SPR 61 PSI 30; 9 RTW 1</code> several at once<br><code>UNDO</code> revert the last change<hr class='my-2'>Moves the driver to the matching setup at that track, or makes the next one (Gateway 4)."><i class="bi bi-question-circle"></i></button>
         <div class="rms-cmd-preview" data-cmd-preview hidden></div>
+        {% if raceday %}
+        <div class="rms-raceday" title="Kart numbers in commands come from this race's entry list">
+          <i class="bi bi-broadcast"></i> Race day: <a href="{{ url_for('race_detail', event_id=raceday.id) }}">{{ raceday.name }}</a>
+          {% if session.get('raceday') %}<button type="submit" form="raceday-clear-form" class="rms-raceday-x" title="Stop using this entry list">×</button>{% endif %}
+        </div>
+        {% endif %}
       </form>
+      {% if raceday and session.get('raceday') %}
+      <form method="post" action="{{ url_for('raceday_clear') }}" id="raceday-clear-form" class="d-none">{{ csrf_field() }}</form>
+      {% endif %}
       {% endif %}
       <div class="d-flex gap-2 flex-wrap justify-content-end">{% block actions %}{% endblock %}</div>
     </header>

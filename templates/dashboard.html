@@ -5,7 +5,7 @@
 {% block eyebrow %}RMS Racing · Admin{% endblock %}
 {% block actions %}
   {{ add_btn('event', 'Event', cls='btn-outline-rms') }}
-  {{ add_btn('run', 'Log run') }}
+  <a class="btn btn-rms" href="{{ url_for('raceday') }}"><i class="bi bi-broadcast"></i> Race day</a>
 {% endblock %}
 {% block content %}
 <div class="row g-3">
@@ -32,7 +32,7 @@
     <div class="row g-3 h-100">
       {% for label, value, icon, link in [
         ('Active drivers', stats.drivers, 'person-badge', 'drivers'),
-        ('Karts', stats.karts, 'tools', 'garage'),
+        ('Races', stats.races, 'flag', 'races'),
         ('Setups', stats.setups, 'sliders', 'setups'),
         ('Runs logged', stats.runs, 'stopwatch', 'times')] %}
       <div class="col-6">
@@ -47,20 +47,20 @@
 
   <div class="col-xl-8">
     <div class="rms-card mb-3">
-      <div class="rms-card-head"><h2><i class="bi bi-grid-3x3-gap"></i> Lineup</h2><span class="small muted d-none d-md-inline">Click a value to change it</span></div>
+      <div class="rms-card-head"><h2><i class="bi bi-grid-3x3-gap"></i> Lineup{% if raceday %} <span class="chip red ms-1"><i class="bi bi-broadcast"></i> {{ raceday.name }}</span>{% endif %}</h2><span class="small muted d-none d-md-inline">Click a value to change it</span></div>
       <div class="table-responsive">
         <table class="table table-rms table-hover lineup">
-          <thead><tr><th>#</th><th>Driver</th><th>Setup</th><th>SPR</th><th>FTW</th><th>RTW</th><th>PSI</th></tr></thead>
+          <thead><tr><th>#</th><th>Driver</th><th>Setup</th><th>SPR</th><th>FTW</th><th>RTW</th><th>PSI</th><th>FRH</th></tr></thead>
           <tbody>
           {% for d in lineup %}
             <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}">
               <td class="num">{{ d.number }}</td>
-              <td class="fw-semibold text-nowrap">{{ d.name }}</td>
-              <td class="small"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">#{{ d.setup_id }}</a></td>
+              <td class="fw-semibold text-nowrap">{{ d.name }} <span class="chip">{{ d.kart_class }}</span></td>
+              <td class="small text-nowrap"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">{{ d.setup_name }}</a></td>
               {{ ui.lineup_cells(d) }}
             </tr>
           {% else %}
-            <tr><td colspan="7"><div class="empty">No active drivers.</div></td></tr>
+            <tr><td colspan="8"><div class="empty">No active drivers.</div></td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -115,19 +115,6 @@
         {% endfor %}
       </div>
     </div>
-    {% if worn %}
-    <div class="rms-card">
-      <div class="rms-card-head"><h2><i class="bi bi-exclamation-triangle"></i> Tires to watch</h2><a href="{{ url_for('garage') }}" class="small">Garage →</a></div>
-      <div class="rms-card-body py-2">
-        {% for t in worn %}
-          <div class="d-flex justify-content-between align-items-center py-2 {% if not loop.first %}border-top{% endif %}">
-            <div><div class="fw-semibold">{{ t.name }}</div><div class="small muted">{{ t.kart_name }}</div></div>
-            <span class="chip {{ 'red' if t.runs >= tire_life else 'amber' }}">{{ t.runs }} runs</span>
-          </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endif %}
   </div>
 
   <div class="col-lg-6">

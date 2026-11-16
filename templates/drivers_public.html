@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Drivers{% endblock %}
+{# The public driver list: who races for RMS and how they've done. No setups, karts, contacts or why anyone left. #}
+{% block content %}
+<div class="rms-card">
+  <div class="rms-card-head">
+    <h2><i class="bi bi-person-badge"></i> Drivers <span class="chip">{{ drivers|length }}</span></h2>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-rms">
+      <thead><tr><th>Driver</th><th>Class</th>
+        <th class="text-center">Wins</th><th class="text-center">Podiums</th><th class="text-center">Top 5s</th><th class="text-center">Races</th></tr></thead>
+      <tbody>
+      {% for d in drivers %}
+        <tr>
+          <td><div class="d-flex align-items-center gap-2">{{ ui.avatar(d.name, d.number, 'red') }}<span class="fw-semibold text-nowrap">{{ d.name }}</span></div></td>
+          <td><span class="chip">{{ d.kart_class }}</span></td>
+          <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
+          <td class="text-center">{{ d.podiums or '—' }}</td>
+          <td class="text-center">{{ d.top5s or '—' }}</td>
+          <td class="text-center">{{ d.race_count }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6"><div class="empty"><i class="bi bi-person-badge"></i>No drivers yet.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if former %}
+<div class="rms-card mt-3">
+  <div class="rms-card-head"><h2><i class="bi bi-person-dash"></i> Former drivers <span class="chip">{{ former|length }}</span></h2></div>
+  <div class="table-responsive">
+    <table class="table table-rms">
+      <thead><tr><th>Driver</th><th class="text-center">Wins</th><th class="text-center">Podiums</th><th class="text-center">Top 5s</th><th class="text-center">Races</th></tr></thead>
+      <tbody>
+      {% for d in former %}
+        <tr>
+          <td><div class="d-flex align-items-center gap-2">{{ ui.avatar(d.name, d.number) }}<span class="fw-semibold text-nowrap">{{ d.name }}</span></div></td>
+          <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
+          <td class="text-center">{{ d.podiums or '—' }}</td>
+          <td class="text-center">{{ d.top5s or '—' }}</td>
+          <td class="text-center">{{ d.race_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

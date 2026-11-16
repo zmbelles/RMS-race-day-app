@@ -2,10 +2,9 @@
 {% from "_forms.html" import add_btn, edit_btn, delete_btn %}
 {% import "_ui.html" as ui %}
 {% block title %}{{ s.name }}{% endblock %}
-{% block eyebrow %}<a href="{{ url_for('setups') }}">Setups</a> / #{{ s.id }}{% endblock %}
+{% block eyebrow %}<a href="{{ url_for('setups') }}">Setups</a> / {% if s.track_id %}<a href="{{ url_for('setups', track=s.track_id) }}">{{ s.track_name }}</a>{% else %}No track{% endif %}{% endblock %}
 {% block actions %}
   {{ edit_btn('setup', s, 'Edit', 'btn-outline-rms') }}
-  {{ add_btn('run', 'Log run', {'setup_id': s.id}) }}
 {% endblock %}
 {% block content %}
 {% macro spec(label, value, unit='') %}
@@ -19,18 +18,17 @@
     <div class="rms-card rms-card-body mb-3">
       <div class="small-label mb-2">Used by</div>
       <div class="d-flex flex-wrap gap-2 mb-3">
-        {% for d in drivers %}<a class="chip dark" href="{{ url_for('driver_detail', driver_id=d.id) }}">#{{ d.number }} {{ d.name }}</a>
+        {% for d in drivers %}<a class="chip dark" href="{{ url_for('driver_detail', driver_id=d.id) }}">#{{ d.number }} {{ d.name }} · {{ d.kart_class }}</a>
         {% else %}<span class="small muted">No driver is on this setup right now.</span>{% endfor %}
       </div>
       <div class="spec-grid">
         <div class="spec highlight"><div class="small-label">SPR</div><div class="v">{{ s.rear_sprocket }}T</div></div>
-        <div class="spec highlight"><div class="small-label">Ratio</div><div class="v">{{ s|ratio }}</div></div>
         <div class="spec highlight red"><div class="small-label">Best lap</div><div class="v">{{ s.best_lap|lap }}</div></div>
       </div>
     </div>
     {% for title, icon, rows in [
       ('Track width & tires', 'bullseye', [('FTW', s.front_width, 'in'), ('RTW', s.rear_width, 'in'), ('Tire', s.tire), ('PSI', s.psi), ('Front sprocket', s.front_sprocket, 'T')]),
-      ('Chassis', 'diagram-3', [('Axle', s.axle), ('Caster', s.caster), ('Camber', s.camber), ('Seat', s.seat_position), ('Ride height', s.ride_height)]),
+      ('Chassis', 'diagram-3', [('Axle', s.axle), ('Caster', s.caster), ('Camber', s.camber), ('Seat', s.seat_position), ('Front ride height', s.front_shims_above|shims)]),
       ('Weight & engine', 'speedometer', [('Total weight', s.total_weight, 'lb'), ('Ballast', s.ballast), ('Carb jetting', s.carb_jetting), ('Clutch', s.clutch)]),
     ] %}
     <div class="rms-card mb-3">
@@ -47,7 +45,7 @@
         <a class="small" href="{{ url_for('setup_compare', ids=[s.id]) }}">Compare with… →</a></div>
       <div class="table-responsive">
         <table class="table table-rms">
-          <thead><tr><th>Date</th><th>Driver</th><th>Track</th><th>Session</th><th>Tires</th><th class="text-end">Air / track</th><th class="text-end">Best</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Driver</th><th>Track</th><th>Session</th><th class="text-end">Air / track</th><th class="text-end">Best</th><th></th></tr></thead>
           <tbody>
           {% for r in runs %}
             <tr>
@@ -55,7 +53,7 @@
               <td class="text-nowrap">#{{ r.driver_number }} {{ r.driver_name }}</td>
               <td>{{ r.track_name or '—' }}</td>
               <td>{{ r.session or '—' }}</td>
-              <td class="small">{{ r.tire_name or '—' }}{% if r.tire_runs %} <span class="chip">run {{ r.tire_runs }}</span>{% endif %}</td>
+              
               <td class="text-end">{{ ui.temps(r) }}</td>
               <td class="text-end text-nowrap"><span class="lap {{ 'best' if r.best_lap and r.best_lap == s.best_lap }}">{% if r.best_lap and r.best_lap == s.best_lap %}<i class="bi bi-trophy-fill"></i> {% endif %}{{ r.best_lap|lap }}</span>{{ r.best_lap|delta(r.target_lap) }}</td>
               <td class="actions">{{ edit_btn('run', r) }}{{ delete_btn('run', r.id, 'run') }}</td>

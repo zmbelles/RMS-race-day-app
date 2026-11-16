@@ -1,4 +1,4 @@
-// RMS Race Day — modal forms, confirm-deletes, gear ratio helpers.
+// RMS Race Day — modal forms, confirm-deletes and row links.
 (() => {
   const fmtLap = (s) => {
     if (s === null || s === undefined || s === "") return "";
@@ -6,29 +6,6 @@
     const m = Math.floor(s / 60);
     const rest = (s - m * 60).toFixed(3);
     return m ? `${m}:${rest.padStart(6, "0")}` : rest;
-  };
-
-  // Show only options whose data-key matches the parent's selected data-key
-  // (e.g. tire sets belonging to the chosen setup's kart).
-  const applyFilters = (form) => {
-    form.querySelectorAll("select[data-filter-by]").forEach((child) => {
-      const parent = form.querySelector(`[name="${child.dataset.filterBy}"]`);
-      const key = parent?.selectedOptions[0]?.dataset.key;
-      let keep = false;
-      [...child.options].forEach((o) => {
-        const show = !o.value || !key || o.dataset.key === key;
-        o.hidden = !show;
-        if (show && o.selected) keep = true;
-      });
-      if (!keep) child.value = "";
-    });
-  };
-
-  const liveRatio = (form) => {
-    const out = form.querySelector("[data-live-ratio]");
-    if (!out) return;
-    const f = +form.elements.front_sprocket.value, r = +form.elements.rear_sprocket.value;
-    out.textContent = f && r ? (r / f).toFixed(3) : "—";
   };
 
   const openForm = (key, record, defaults) => {
@@ -56,12 +33,6 @@
         });
       });
     }
-    applyFilters(form);
-    // Selecting the filter first can blank a valid child value — restore it.
-    form.querySelectorAll("select[data-filter-by]").forEach((el) => {
-      if (values[el.name] != null) el.value = values[el.name];
-    });
-    liveRatio(form);
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   };
 
@@ -85,10 +56,6 @@
         if (el && value != null) el.value = value;
       });
     }
-    applyFilters(form);
-  });
-  document.addEventListener("input", (e) => {
-    if (e.target.form?.dataset.formKey === "setup") liveRatio(e.target.form);
   });
 
   document.addEventListener("submit", (e) => {
@@ -102,22 +69,6 @@
     if (row && !e.target.closest("a,button,form,input,select,[data-cmd]")) location.href = row.dataset.href;
   });
 
-  // Gear calculator widget
-  const calc = document.querySelector("[data-gear-calc]");
-  if (calc) {
-    const render = () => {
-      const f = +calc.querySelector("[name=calc_front]").value;
-      const r = +calc.querySelector("[name=calc_rear]").value;
-      const out = calc.querySelector("[data-gear-out]");
-      if (!f || !r) { out.innerHTML = ""; return; }
-      out.innerHTML = [-2, -1, 0, 1, 2].map((d) => {
-        const rr = r + d;
-        return `<div class="gear-chip ${d === 0 ? "current" : ""}"><span>${f}/${rr}</span><strong>${(rr / f).toFixed(3)}</strong></div>`;
-      }).join("");
-    };
-    calc.addEventListener("input", render);
-    render();
-  }
 })();
 
 // Race-day command bar: live preview while typing, Enter to apply, "/" to focus.
@@ -177,3 +128,247 @@
 document.querySelectorAll('[data-bs-toggle="popover"]').forEach((el) => new bootstrap.Popover(el));
 
 document.querySelectorAll(".modal[data-autoshow]").forEach((el) => bootstrap.Modal.getOrCreateInstance(el).show());
+
+// Race day: drag a setup from the tray onto a driver's card to put them on it.
+(() => {
+  const form = document.getElementById("drop-setup-form");
+  if (!form) return;
+  document.querySelectorAll("[data-drag-setup]").forEach((el) => {
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", el.dataset.dragSetup);
+      e.dataTransfer.effectAllowed = "copy";
+      document.body.classList.add("dragging-setup");
+    });
+    el.addEventListener("dragend", () => document.body.classList.remove("dragging-setup"));
+  });
+  document.querySelectorAll("[data-drop-entry]").forEach((card) => {
+    card.addEventListener("dragover", (e) => { e.preventDefault(); card.classList.add("drop-target"); });
+    card.addEventListener("dragleave", (e) => { if (!card.contains(e.relatedTarget)) card.classList.remove("drop-target"); });
+    card.addEventListener("drop", (e) => {
+      e.preventDefault();
+      card.classList.remove("drop-target");
+      const setup = e.dataTransfer.getData("text/plain");
+      if (!setup) return;
+      form.elements.entry_id.value = card.dataset.dropEntry;
+      form.elements.setup_id.value = setup;
+      form.submit();
+    });
+  });
+})();
+
+// Weekend format editor: add, remove and reorder sessions, or start from a preset.
+(() => {
+  const PRESETS = {
+    club: [["first", "Practice 1", "Practice"], ["first", "Practice 2", "Practice"], ["first", "Practice 3", "Practice"],
+           ["last", "Heat 1", "Heat"], ["last", "Heat 2", "Heat"]],
+    weekend: [["first", "Practice 1", "Practice"], ["first", "Practice 2", "Practice"], ["first", "Practice 3", "Practice"],
+              ["first", "Practice 4", "Practice"], ["last", "Qualifying", "Qualifying"], ["last", "Heat 1", "Heat"],
+              ["last", "Heat 2", "Heat"], ["last", "Final", "Feature"]],
+    races: [["first", "Practice 1", "Practice"], ["first", "Practice 2", "Practice"], ["first", "Practice 3", "Practice"],
+            ["last", "Qualifying", "Qualifying"], ["last", "Race 1", "Race"], ["last", "Race 2", "Race"]],
+    clear: [],
+  };
+  const kindOf = (name) => {
+    const w = (name.trim().split(/\s+/)[0] || "").toLowerCase();
+    if (/^(final|main|feature)/.test(w)) return "Feature";
+    for (const k of ["Practice", "Qualifying", "Heat", "Race", "Prefinal"]) if (w.startsWith(k.toLowerCase().slice(0, 4))) return k;
+    return null;
+  };
+  const addRow = (form, day, name = "", kind = null) => {
+    const body = form.querySelector("[data-format-rows]");
+    const row = form.querySelector("template[data-format-row]").content.firstElementChild.cloneNode(true);
+    const last = body.lastElementChild;
+    row.querySelector("[name=day]").value = day || (last ? last.querySelector("[name=day]").value : row.querySelector("[name=day]").value);
+    row.querySelector("[name=name]").value = name;
+    if (kind) row.querySelector("[name=kind]").value = kind;
+    body.append(row);
+    return row;
+  };
+  document.addEventListener("click", (e) => {
+    const form = e.target.closest("[data-format-editor]");
+    if (!form) return;
+    const days = [...form.querySelector("template[data-format-row]").content.querySelectorAll("[name=day] option")].map((o) => o.value);
+    if (e.target.closest("[data-format-add]")) {
+      addRow(form).querySelector("[name=name]").focus();
+    } else if (e.target.closest("[data-format-remove]")) {
+      e.target.closest("tr").remove();
+    } else if (e.target.closest("[data-format-move]")) {
+      const row = e.target.closest("tr");
+      const step = +e.target.closest("[data-format-move]").dataset.formatMove;
+      const other = step < 0 ? row.previousElementSibling : row.nextElementSibling;
+      if (other) step < 0 ? other.before(row) : other.after(row);
+    } else if (e.target.closest("[data-format-preset]")) {
+      form.querySelector("[data-format-rows]").replaceChildren();
+      for (const [when, name, kind] of PRESETS[e.target.closest("[data-format-preset]").dataset.formatPreset]) {
+        addRow(form, when === "first" ? days[0] : days[days.length - 1], name, kind);
+      }
+    }
+  });
+  // Changing the dates rebuilds every Day list; a session keeps its day if the race still covers it.
+  const dayLabel = (iso) => new Date(iso + "T00:00:00Z").toLocaleDateString("en-US",
+    { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }).replace(",", "");
+  document.addEventListener("change", (e) => {
+    const form = e.target.closest("[data-format-editor]");
+    if (!form || !e.target.matches("[data-format-start], [data-format-end]")) return;
+    const startInput = form.querySelector("[data-format-start]");
+    const endInput = form.querySelector("[data-format-end]");
+    if (!startInput.value) return;
+    if (!endInput.value || endInput.value < startInput.value) endInput.value = startInput.value;
+    const days = [];
+    for (let d = new Date(startInput.value + "T00:00:00Z"); days.length < 14; d.setUTCDate(d.getUTCDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      if (iso > endInput.value) break;
+      days.push(iso);
+    }
+    const selects = [...form.querySelectorAll("[name=day]"),
+                     ...form.querySelector("template[data-format-row]").content.querySelectorAll("[name=day]")];
+    for (const select of selects) {
+      const was = select.value;
+      select.replaceChildren(...days.map((iso) => new Option(dayLabel(iso), iso)));
+      select.value = days.includes(was) ? was : (was > days[days.length - 1] ? days[days.length - 1] : days[0]);
+    }
+  });
+  // Typing a name picks its type: "Heat 2" -> Heat, "Final" -> Feature.
+  document.addEventListener("input", (e) => {
+    if (e.target.name !== "name" || !e.target.closest("[data-format-editor]")) return;
+    const kind = kindOf(e.target.value);
+    if (kind) e.target.closest("tr").querySelector("[name=kind]").value = kind;
+  });
+})();
+
+// Log run on race day: one session, stepping through each driver on the entry list.
+(() => {
+  const form = document.querySelector("[data-stepper]");
+  if (!form) return;
+  const steps = [...form.querySelectorAll("[data-step]")];
+  const dots = [...form.querySelectorAll("[data-step-go]")];
+  const prev = form.querySelector("[data-step-prev]");
+  const next = form.querySelector("[data-step-next]");
+  const save = form.querySelector("[data-step-save]");
+  const session = form.querySelector("[data-step-session]");
+  const days = JSON.parse(form.dataset.sessionDays || "{}");
+  let at = 0;
+  const filled = (step) => [...step.querySelectorAll("input:not([type=hidden])")].some((i) => i.value.trim());
+  const show = (i, focus = true) => {
+    at = Math.max(0, Math.min(steps.length - 1, i));
+    steps.forEach((s, n) => { s.hidden = n !== at; });
+    dots.forEach((d, n) => { d.classList.toggle("active", n === at); d.classList.toggle("filled", filled(steps[n])); });
+    form.querySelector("[data-step-num]").textContent = at + 1;
+    prev.disabled = at === 0;
+    next.hidden = at === steps.length - 1;
+    save.classList.toggle("btn-outline-rms", at !== steps.length - 1);
+    save.classList.toggle("btn-rms", at === steps.length - 1);
+    if (focus) steps[at].querySelector("[data-lap]").focus();
+  };
+  // A driver who already has a lap in this session gets a heads-up (saving adds another run).
+  const hints = () => {
+    const name = session.value.trim();
+    for (const step of steps) {
+      const lap = JSON.parse(step.dataset.logged || "{}")[name];
+      const hint = step.querySelector("[data-logged-hint]");
+      hint.hidden = !lap;
+      if (lap) hint.textContent = `Already logged in ${name}: ${lap}. Saving adds another run.`;
+    }
+  };
+  session.addEventListener("input", () => {
+    if (days[session.value.trim()]) form.querySelector("[data-step-date]").value = days[session.value.trim()];
+    hints();
+  });
+  prev.addEventListener("click", () => show(at - 1));
+  next.addEventListener("click", () => show(at + 1));
+  dots.forEach((d) => d.addEventListener("click", () => show(+d.dataset.stepGo)));
+  form.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !e.target.closest("[data-step]")) return;
+    e.preventDefault();
+    if (at < steps.length - 1) show(at + 1); else form.requestSubmit();
+  });
+  form.addEventListener("input", () => dots[at].classList.toggle("filled", filled(steps[at])));
+  form.closest(".modal").addEventListener("shown.bs.modal", () => show(at));
+  // Clicking a session on the weekend timeline opens Log run for that session, from the first driver.
+  document.addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-log-session]");
+    if (!chip) return;
+    session.value = chip.dataset.logSession;
+    session.dispatchEvent(new Event("input"));
+    show(0, false);
+  });
+  hints();
+})();
+
+// Copy buttons: copy the target element's text.
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest("[data-copy-target]");
+  if (!btn) return;
+  const label = btn.querySelector("span");
+  try {
+    await navigator.clipboard.writeText(document.querySelector(btn.dataset.copyTarget).textContent);
+    if (label) label.textContent = "Copied";
+  } catch {
+    if (label) label.textContent = "Select and copy";
+  }
+  setTimeout(() => { if (label) label.textContent = "Copy"; }, 2000);
+});
+
+// Results grid: picking PEN opens a popup for positions lost and the reason; the cell then shows "PEN +2 · reason",
+// which reopens it. The popup lives inside the results modal so the modal keeps focus.
+(() => {
+  let popup, cell;
+  const label = (td) => {
+    const pos = td.querySelector("[data-pen-pos]").value, why = td.querySelector("[data-pen-why]").value;
+    const btn = td.querySelector("[data-pen-edit]");
+    btn.textContent = `PEN${pos ? " +" + pos : ""}${why ? " · " + why : ""}`;
+    btn.title = "Edit penalty";
+  };
+  document.querySelectorAll("[data-pen-edit]").forEach((btn) => label(btn.closest("td")));
+  const build = (host) => {
+    popup = document.createElement("div");
+    popup.className = "pen-popup";
+    popup.hidden = true;
+    popup.innerHTML = `<div class="fw-bold mb-1">Penalty</div><div class="small muted mb-2" data-pen-who></div>
+      <label class="form-label small mb-1">Positions lost</label>
+      <input class="form-control form-control-sm mb-2" type="number" min="0" inputmode="numeric" data-pen-in-pos>
+      <label class="form-label small mb-1">Reason</label>
+      <input class="form-control form-control-sm mb-2" placeholder="Jumped start, contact, track limits…" data-pen-in-why>
+      <div class="d-flex justify-content-end gap-1">
+        <button type="button" class="btn btn-sm btn-light" data-pen-cancel>Cancel</button>
+        <button type="button" class="btn btn-sm btn-rms" data-pen-ok>Done</button></div>`;
+    host.append(popup);
+    popup.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); popup.querySelector("[data-pen-ok]").click(); }
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }
+    });
+    popup.querySelector("[data-pen-cancel]").addEventListener("click", close);
+    popup.querySelector("[data-pen-ok]").addEventListener("click", () => {
+      cell.querySelector("[data-pen-pos]").value = popup.querySelector("[data-pen-in-pos]").value.trim();
+      cell.querySelector("[data-pen-why]").value = popup.querySelector("[data-pen-in-why]").value.trim();
+      label(cell);
+      close();
+    });
+  };
+  const open = (td) => {
+    if (!popup) build(td.closest(".modal-content"));
+    cell = td;
+    const btn = td.querySelector("[data-pen-edit]");
+    popup.querySelector("[data-pen-who]").textContent = btn.dataset.penTitle;
+    popup.querySelector("[data-pen-in-pos]").value = td.querySelector("[data-pen-pos]").value;
+    popup.querySelector("[data-pen-in-why]").value = td.querySelector("[data-pen-why]").value;
+    popup.hidden = false;
+    const r = td.getBoundingClientRect(), w = popup.offsetWidth, h = popup.offsetHeight;
+    popup.style.left = `${Math.max(8, Math.min(r.left, innerWidth - w - 8))}px`;
+    popup.style.top = `${r.bottom + 4 + h > innerHeight ? Math.max(8, r.top - h - 4) : r.bottom + 4}px`;
+    popup.querySelector("[data-pen-in-pos]").focus();
+  };
+  const close = () => { if (popup) popup.hidden = true; };
+  document.addEventListener("change", (e) => {
+    if (!e.target.matches("[data-classification]")) return;
+    const td = e.target.closest("td");
+    td.querySelector("[data-pen-edit]").hidden = e.target.value !== "PEN";
+    if (e.target.value === "PEN") { label(td); open(td); } else close();
+  });
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-pen-edit]");
+    if (btn) { open(btn.closest("td")); return; }
+    if (popup && !popup.hidden && !popup.contains(e.target) && !e.target.closest("[data-classification]")) close();
+  });
+  document.addEventListener("hide.bs.modal", close);
+})();

@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% from "_forms.html" import edit_btn, delete_btn %}
+{% from "_entry_list.html" import entry_list_modal with context %}
+{% from "_weekend.html" import weekend_days, format_modal with context %}
+{% import "_ui.html" as ui %}
+{% block title %}Race day{% endblock %}
+{% block eyebrow %}
+  {% if event %}
+  <form method="get" class="d-inline">
+    <select class="raceday-picker" name="event" onchange="this.form.submit()" aria-label="Switch race or test day" title="Switch race or test day">
+      {% for e in events %}<option value="{{ e.id }}" {{ 'selected' if e.id == event.id }}>{{ e.start_date|nice_date }} · {{ e.name }}</option>{% endfor %}
+    </select>
+  </form>
+  {% else %}RMS Racing{% endif %}
+{% endblock %}
+{% block actions %}
+  {% if event %}
+  <a class="btn btn-outline-rms" href="{{ url_for('race_detail', event_id=event.id) }}"><i class="bi bi-flag"></i> Results</a>
+  <button type="button" class="btn btn-outline-rms" data-bs-toggle="modal" data-bs-target="#weekend-format"><i class="bi bi-calendar3-week"></i> Weekend format</button>
+  <button type="button" class="btn btn-outline-rms" data-bs-toggle="modal" data-bs-target="#entry-list"><i class="bi bi-person-lines-fill"></i> Assign drivers</button>
+  {% if cards %}<button type="button" class="btn btn-rms" data-bs-toggle="modal" data-bs-target="#log-runs"><i class="bi bi-stopwatch"></i> Log run</button>{% endif %}
+  {% endif %}
+{% endblock %}
+{% block content %}
+{% if not event %}
+  <div class="rms-card"><div class="empty"><i class="bi bi-broadcast"></i>No races or RMS test days yet. Add one on the Schedule.</div></div>
+{% else %}
+<div class="rms-card rms-card-body mb-3 d-flex flex-wrap gap-4 align-items-center">
+  <div>{{ ui.event_chip(event) }}</div>
+  <div><div class="small-label">Track</div><div class="fw-semibold">{{ event.track_name or 'TBD' }}</div></div>
+  <div><div class="small-label">Dates</div><div class="fw-semibold">{{ event.start_date|nice_date }}{% if event.end_date and event.end_date != event.start_date %} – {{ event.end_date|nice_date }}{% endif %}</div></div>
+  <div><div class="small-label">Good lap</div><div class="fw-semibold">{{ target|lap }}</div></div>
+  <div><div class="small-label">RMS best lap</div>
+    {% if best_lap %}<div class="fw-semibold"><span class="lap best">{{ best_lap.best_lap|lap }}</span>{{ best_lap.best_lap|delta(target) }}</div>
+      <div class="small muted">{{ best_lap.driver_name }} · {{ best_lap.kart_class }} · {{ best_lap.lap_date[:4] }}</div>
+    {% else %}<div class="fw-semibold muted">—</div>{% endif %}</div>
+  <div><div class="small-label">Best RMS result</div>
+    {% if best_result %}<div class="fw-semibold">{{ ui.place(best_result.finish_pos) }}{{ ui.pen(best_result) }}</div>
+      <div class="small muted">{{ best_result.driver_name }} · {{ best_result.kart_class }} · {{ best_result.start_date[:4] }}{% if best_result.session != 'Final' %} {{ best_result.session }}{% endif %}</div>
+    {% else %}<div class="fw-semibold muted">—</div>{% endif %}</div>
+  <div><div class="small-label">Drivers</div><div class="fw-semibold">{{ cards|length }}</div></div>
+  <div class="ms-auto small muted"><i class="bi bi-terminal"></i> Commands use the kart numbers below · drag a setup onto a driver to switch them</div>
+</div>
+
+<div class="rms-card mb-3">
+  <div class="rms-card-head">
+    <h2><i class="bi bi-calendar3-week"></i> Weekend
+      {% if up_next %}<span class="chip red ms-1">Up next: {{ up_next.name }}</span>{% elif weekend and cards %}<span class="chip ms-1"><i class="bi bi-check2"></i> all logged</span>{% endif %}</h2>
+    <div class="d-flex gap-1">
+      <a class="btn btn-sm btn-outline-rms" href="{{ url_for('raceday_report', event_id=event.id) }}" title="Each day written up for an AI summary and suggestions"><i class="bi bi-stars"></i> Day report</a>
+      <button type="button" class="btn btn-sm btn-outline-rms" data-bs-toggle="modal" data-bs-target="#weekend-format"><i class="bi bi-pencil-square"></i> {{ 'Edit' if weekend else 'Set format' }}</button>
+    </div>
+  </div>
+  <div class="rms-card-body pt-0">
+    {% if weekend %}{{ weekend_days(weekend, done, up_next, log=cards|length > 0, report=event.id) }}
+    {% else %}<div class="small muted">No format yet. Lay out the practice sessions, heats and feature for each day, and Log run will start on the next session.</div>{% endif %}
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-xxl-9">
+    {% if not cards %}
+      <div class="rms-card"><div class="empty"><i class="bi bi-person-plus"></i>No drivers assigned yet.
+        <div class="mt-2"><button type="button" class="btn btn-rms" data-bs-toggle="modal" data-bs-target="#entry-list">Assign drivers</button></div></div></div>
+    {% endif %}
+    <div class="row g-3">
+    {% for c in cards %}
+      {% set s, e, r = c.setup, c.entry, c.roster %}
+      <div class="col-lg-6">
+        <div class="rms-card h-100 d-flex flex-column raceday-card" data-drop-entry="{{ e.entry_id }}">
+          <div class="rms-card-head">
+            <div class="d-flex align-items-center gap-2 min-w-0">
+              <span class="raceday-num">{{ r.race_number }}</span>
+              <div class="min-w-0">
+                <div class="fw-bold text-truncate"><a class="text-reset" href="{{ url_for('driver_detail', driver_id=e.driver_id) }}">{{ e.name }}</a></div>
+                <div class="small muted text-truncate"><span class="chip">{{ e.kart_class }}</span> {{ e.kart_name }}</div>
+              </div>
+            </div>
+            <a class="small text-nowrap" href="{{ url_for('setup_detail', setup_id=s.id) }}">{{ s.name }} →</a>
+          </div>
+          <div class="rms-card-body">
+            <div class="spec-grid lineup mb-2">
+              {% for label, kw, value in [('Rear sprocket', 'SPR', s.rear_sprocket ~ 'T'), ('Front width', 'FTW', s.front_width|num),
+                                          ('Rear width', 'RTW', s.rear_width|num), ('Tire pressure', 'PSI', s.psi|num),
+                                          ('Front ride height', 'FRH', s.front_shims_above|shims)] %}
+                <a href="#" class="spec highlight text-reset" data-cmd="{{ c.cmd }} {{ kw }} " title="Change with {{ c.cmd }} {{ kw }} …">
+                  <div class="small-label">{{ kw }}</div><div class="v">{{ value }}</div></a>
+              {% endfor %}
+            </div>
+            <form method="post" action="{{ url_for('raceday_assign_setup') }}" class="d-flex gap-2 mb-2">{{ csrf_field() }}
+              <input type="hidden" name="entry_id" value="{{ e.entry_id }}">
+              <select class="form-select form-select-sm" name="setup_id" onchange="this.form.submit()" aria-label="Switch setup">
+                <option value="">Switch setup…</option>
+                {% for t in tray %}<option value="{{ t.id }}" {{ 'disabled' if t.id == s.id }}>{{ t.name }} — {{ t|spec }}</option>{% endfor %}
+              </select>
+            </form>
+            {% if c.runs %}
+            <table class="table table-rms table-sm mb-0">
+              <thead><tr><th>Session</th><th class="text-end">Best</th><th class="text-end">Laps</th><th class="text-end">Air / track</th><th></th></tr></thead>
+              <tbody>
+              {% for run in c.runs %}
+                <tr>
+                  <td class="small">{{ run.session or '—' }}<div class="muted">{{ run.run_date|nice_date }} · {{ run.setup_name or '—' }}</div></td>
+                  <td class="text-end text-nowrap"><span class="lap">{{ run.best_lap|lap }}</span>{{ run.best_lap|delta(target) }}</td>
+                  <td class="text-end">{{ run.laps or '—' }}</td>
+                  <td class="text-end small">{{ ui.temps(run) }}</td>
+                  <td class="actions">{{ edit_btn('run', run) }}{{ delete_btn('run', run.id, 'run') }}</td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+            {% else %}<div class="small muted">No runs logged here yet.</div>{% endif %}
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+
+  <div class="col-xxl-3">
+    <div class="rms-card raceday-tray">
+      <div class="rms-card-head"><h3><i class="bi bi-sliders"></i> Setups</h3><span class="small muted">drag onto a driver</span></div>
+      <div class="rms-card-body py-2">
+        {% for t in tray %}
+          {% if loop.changed(t.track_id) %}<div class="small-label mt-2 mb-1">{{ t.track_name or 'No track' }}</div>{% endif %}
+          <div class="tray-setup" draggable="true" data-drag-setup="{{ t.id }}" title="Drag onto a driver to switch them to {{ t.name }}">
+            <i class="bi bi-grip-vertical muted"></i>
+            <div class="min-w-0"><div class="fw-semibold small">{{ t.name }}</div><div class="small muted text-truncate">{{ t|spec }}</div></div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('raceday_assign_setup') }}" id="drop-setup-form" class="d-none">{{ csrf_field() }}
+  <input type="hidden" name="entry_id"><input type="hidden" name="setup_id"></form>
+
+{% if cards %}
+{# Log run: one session at a time, stepping through every driver on the entry list. #}
+{% set session_days = {} %}{% for day, sessions in weekend %}{% for x in sessions %}{% set _ = session_days.update({x.name: x.day}) %}{% endfor %}{% endfor %}
+<div class="modal fade rms-modal" id="log-runs" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <form class="modal-content" method="post" action="{{ url_for('raceday_log_runs', event_id=event.id) }}" data-stepper
+          data-session-days='{{ session_days|tojson|forceescape }}'>{{ csrf_field() }}
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Log run</h5>
+        <span class="small muted ms-2">Driver <strong data-step-num>1</strong> of {{ cards|length }}</span>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 log-shared mb-3">
+          <div class="col-md-4"><label class="form-label small mb-1" for="log-session">Session</label>
+            <input class="form-control form-control-sm" id="log-session" name="session" list="log-session-names" value="{{ up_next.name if up_next else '' }}" placeholder="Practice 1" data-step-session>
+            <datalist id="log-session-names">{% for n in session_names %}<option value="{{ n }}">{% endfor %}</datalist></div>
+          <div class="col-md-3 col-6"><label class="form-label small mb-1" for="log-date">Date</label>
+            <input class="form-control form-control-sm" type="date" id="log-date" name="run_date" value="{{ up_next.day if up_next else run_date }}" data-step-date></div>
+          <div class="col-md-3 col-6"><label class="form-label small mb-1" for="log-cond">Conditions</label>
+            <select class="form-select form-select-sm" id="log-cond" name="track_condition"><option value="">—</option>
+              {% for c in conditions %}<option>{{ c }}</option>{% endfor %}</select></div>
+          <div class="col-md-1 col-6"><label class="form-label small mb-1" for="log-air">Air °F</label>
+            <input class="form-control form-control-sm" id="log-air" name="air_temp" type="number" step="0.1" inputmode="decimal"></div>
+          <div class="col-md-1 col-6"><label class="form-label small mb-1" for="log-trk">Track °F</label>
+            <input class="form-control form-control-sm" id="log-trk" name="track_temp" type="number" step="0.1" inputmode="decimal"></div>
+        </div>
+
+        <div class="step-dots mb-3">
+          {% for c in cards %}<button type="button" class="step-dot {{ 'active' if loop.first }}" data-step-go="{{ loop.index0 }}" title="{{ c.entry.name }}">{{ c.roster.race_number }}</button>{% endfor %}
+        </div>
+
+        {% for c in cards %}{% set e = c.entry %}
+        <div class="log-step" data-step data-logged='{{ c.logged|tojson|forceescape }}' {{ 'hidden' if not loop.first }}>
+          <input type="hidden" name="entry_id" value="{{ e.entry_id }}">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="raceday-num">{{ c.roster.race_number }}</span>
+            <div class="min-w-0"><div class="fw-bold">{{ e.name }}</div>
+              <div class="small muted"><span class="chip">{{ e.kart_class }}</span> {{ e.kart_name }}</div></div>
+          </div>
+          <div class="alert alert-warning py-1 px-2 small mb-2" data-logged-hint hidden></div>
+          <div class="row g-2">
+            <div class="col-md-4 col-6"><label class="form-label small mb-1" for="lap-{{ e.entry_id }}">Best lap</label>
+              <input class="form-control" id="lap-{{ e.entry_id }}" name="best_lap_{{ e.entry_id }}" data-lap inputmode="decimal"
+                     pattern="^\s*(\d+:)?\d+(\.\d+)?\s*$" placeholder="{{ target|lap if target else '45.123' }}"></div>
+            <div class="col-md-2 col-6"><label class="form-label small mb-1" for="laps-{{ e.entry_id }}">Laps</label>
+              <input class="form-control" id="laps-{{ e.entry_id }}" name="laps_{{ e.entry_id }}" type="number" inputmode="numeric"></div>
+            <div class="col-md-6"><label class="form-label small mb-1" for="setup-{{ e.entry_id }}">Setup</label>
+              <select class="form-select" id="setup-{{ e.entry_id }}" name="setup_{{ e.entry_id }}">
+                {% for t in tray %}<option value="{{ t.id }}" {{ 'selected' if t.id == c.setup.id }}>{{ t.name }} — {{ t|spec }}</option>{% endfor %}</select></div>
+            <div class="col-12"><label class="form-label small mb-1" for="notes-{{ e.entry_id }}">Notes</label>
+              <input class="form-control" id="notes-{{ e.entry_id }}" name="notes_{{ e.entry_id }}" placeholder="Loose on entry, pushing in the hairpin…"></div>
+          </div>
+        </div>
+        {% endfor %}
+        <p class="small muted mt-3 mb-0">Leave a driver blank to skip them. Enter moves to the next driver.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light me-auto" data-step-prev disabled><i class="bi bi-chevron-left"></i> Back</button>
+        <button type="button" class="btn btn-outline-rms" data-step-next>Next <i class="bi bi-chevron-right"></i></button>
+        <button type="submit" class="btn btn-rms" data-step-save><i class="bi bi-check2"></i> Save runs</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{{ format_modal(event, days, weekend, kinds) }}
+{{ entry_list_modal(event, candidates, on_list, show_roster) }}
+{% endif %}
+{% endblock %}

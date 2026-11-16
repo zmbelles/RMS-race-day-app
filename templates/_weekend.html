@@ -1,0 +1,83 @@
+{# The weekend format: every session of a race weekend, day by day (practice, qualifying, heats, feature). #}
+
+{# With log=True (Race day) each session is a button that opens Log run for it. #}
+{% macro weekend_days(weekend, done=(), up_next=None, log=False, report=None) %}
+<div class="weekend">
+  {% for day, sessions in weekend %}
+  <div class="weekend-day">
+    <div class="small-label">{{ day|weekday }}{% if report %} <a class="ms-1 text-reset" href="{{ url_for('raceday_report', event_id=report, day=day) }}" title="Day report for an AI summary"><i class="bi bi-stars"></i></a>{% endif %}</div>
+    <div class="d-flex flex-wrap gap-1">
+      {% for s in sessions %}
+        {% set tag = 'button' if log else 'span' %}
+        <{{ tag }} class="session-chip kind-{{ s.kind|lower }} {{ 'done' if s.name in done }} {{ 'next' if up_next and s.id == up_next.id }}"
+              {% if log %}type="button" data-log-session="{{ s.name }}" data-bs-toggle="modal" data-bs-target="#log-runs"{% endif %}
+              title="{{ s.kind }}{% if s.name in done %} · logged for everyone{% elif up_next and s.id == up_next.id %} · up next{% endif %}{% if log %} · click to log runs{% endif %}">
+          {% if s.name in done %}<i class="bi bi-check2"></i>{% elif up_next and s.id == up_next.id %}<i class="bi bi-play-fill"></i>{% endif %}
+          {{ s.name }}{% if s.start_time %} <small>{{ s.start_time }}</small>{% endif %}</{{ tag }}>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{# Editor: a row per session (day, time, name, type) in running order, with presets to start from. #}
+{% macro format_modal(event, days, weekend, kinds) %}
+<div class="modal fade rms-modal" id="weekend-format" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-dialog-centered modal-lg">
+    <form class="modal-content" method="post" action="{{ url_for('race_format_save', event_id=event.id) }}" data-format-editor>{{ csrf_field() }}
+      <input type="hidden" name="next" value="{{ request.full_path }}">
+      <div class="modal-header">
+        <h5 class="modal-title">Weekend format · {{ event.name }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-3 format-dates">
+          <span class="small fw-semibold">Dates</span>
+          <input class="form-control form-control-sm" type="date" name="start_date" value="{{ event.start_date }}" required aria-label="First day" data-format-start>
+          <span class="small muted">to</span>
+          <input class="form-control form-control-sm" type="date" name="end_date" value="{{ event.end_date or event.start_date }}" aria-label="Last day" data-format-end>
+          <span class="small muted">Changing these moves the race's dates too.</span>
+        </div>
+        <div class="d-flex flex-wrap align-items-center gap-1 mb-2">
+          <span class="small muted me-1">Start from:</span>
+          <button type="button" class="btn btn-sm btn-outline-rms" data-format-preset="club">Club day</button>
+          <button type="button" class="btn btn-sm btn-outline-rms" data-format-preset="weekend">Heats &amp; final</button>
+          <button type="button" class="btn btn-sm btn-outline-rms" data-format-preset="races">Qualifying &amp; two races</button>
+          <button type="button" class="btn btn-sm btn-link text-danger" data-format-preset="clear">Clear</button>
+        </div>
+        <p class="small muted mb-2">List sessions in the order they run. Anything that isn't practice is scored, so it shows up when entering results.</p>
+        <div class="table-responsive">
+          <table class="table table-rms table-sm align-middle mb-2 format-table">
+            <thead><tr><th>Day</th><th>Time</th><th>Session</th><th>Type</th><th></th></tr></thead>
+            <tbody data-format-rows>
+            {% for day, sessions in weekend %}{% for s in sessions %}{{ _format_row(days, kinds, s.day, s.start_time, s.name, s.kind) }}{% endfor %}{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <template data-format-row>{{ _format_row(days, kinds) }}</template>
+        <button type="button" class="btn btn-sm btn-outline-rms" data-format-add><i class="bi bi-plus-lg"></i> Add session</button>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-rms"><i class="bi bi-check2"></i> Save format</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro _format_row(days, kinds, day=None, time=None, name='', kind='Practice') %}
+<tr>
+  <td><select class="form-select form-select-sm" name="day" aria-label="Day">
+    {% for d in days %}<option value="{{ d }}" {{ 'selected' if d == day }}>{{ d|weekday }}</option>{% endfor %}</select></td>
+  <td><input class="form-control form-control-sm" type="time" name="time" value="{{ time or '' }}" aria-label="Start time"></td>
+  <td><input class="form-control form-control-sm" name="name" value="{{ name }}" placeholder="Practice 1" aria-label="Session name"></td>
+  <td><select class="form-select form-select-sm" name="kind" aria-label="Type">
+    {% for k in kinds %}<option {{ 'selected' if k == kind }}>{{ k }}</option>{% endfor %}</select></td>
+  <td class="actions text-nowrap">
+    <button type="button" class="btn btn-icon" data-format-move="-1" title="Move up"><i class="bi bi-arrow-up"></i></button>
+    <button type="button" class="btn btn-icon" data-format-move="1" title="Move down"><i class="bi bi-arrow-down"></i></button>
+    <button type="button" class="btn btn-icon text-danger" data-format-remove title="Remove"><i class="bi bi-x-lg"></i></button></td>
+</tr>
+{% endmacro %}

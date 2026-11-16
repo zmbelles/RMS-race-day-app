@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_forms.html" import add_btn, edit_btn %}
+{% import "_ui.html" as ui %}
+{% block title %}Standings{% endblock %}
+{% block actions %}
+  {% if is_admin() and current and mode == 'points' %}
+    {% if rule %}{{ edit_btn('series', rule, 'Drop rule', 'btn-outline-rms') }}
+    {% else %}{{ add_btn('series', 'Set drop rule', {'name': current}, 'btn-outline-rms') }}{% endif %}
+  {% endif %}
+{% endblock %}
+{% block content %}
+{% set has_official = table|selectattr('official')|list|length > 0 %}
+{% set per_round = split|length if split else 1 %}
+{% set head_rows = 2 if split else 1 %}
+{% macro avg(v) %}{{ '%.1f'|format(v) if v else '—' }}{% endmacro %}
+{% if tabs %}
+<ul class="nav nav-pills nav-pills-rms mb-3 flex-wrap">
+  {% for n, s in tabs %}
+    <li class="nav-item"><a class="nav-link {{ 'active' if n == current and s == season }}" href="{{ url_for('standings', series=n, season=s) }}">{{ n }}{% if n in repeats %} {{ s }}{% endif %}</a></li>
+  {% endfor %}
+</ul>
+{% if classes|length > 1 %}
+<ul class="nav nav-pills nav-pills-rms nav-pills-sm mb-3 flex-wrap">
+  {% for c in classes %}
+    <li class="nav-item"><a class="nav-link {{ 'active' if c == kart_class }}" href="{{ url_for('standings', series=current, season=season, **{'class': c}) }}">{{ c }}</a></li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<div class="rms-card">
+  <div class="rms-card-head">
+    <h2><i class="bi bi-trophy"></i> {{ current }}{% if kart_class %} <span class="chip ms-1">{{ kart_class }}</span>{% endif %}</h2>
+    <span class="small muted">
+      {% if mode == 'points' %}
+        {% if best_of < rounds|length %}Best {{ best_of }} of {{ rounds|length }} rounds count{% else %}All {{ rounds|length }} rounds count{% endif %}
+        · points decide the order
+      {% else %}
+        {{ rounds|length }} round{{ 's' if rounds|length != 1 }} · finishing positions (no points recorded)
+      {% endif %}
+    </span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-rms table-hover standings {{ 'split' if split }}">
+      <thead>
+        <tr>
+          <th rowspan="{{ head_rows }}" class="align-bottom" title="{{ 'Championship finishing position in the whole field' if has_official else 'Among RMS drivers' }}">Pos</th>
+          <th rowspan="{{ head_rows }}" class="align-bottom">Driver</th>
+          {% if mode == 'points' %}
+            <th rowspan="{{ head_rows }}" class="text-end align-bottom">Points</th><th rowspan="{{ head_rows }}" class="text-end align-bottom">Total</th>
+          {% else %}
+            <th rowspan="{{ head_rows }}" class="text-end align-bottom">Rounds</th><th rowspan="{{ head_rows }}" class="text-end align-bottom">Wins</th>
+          {% endif %}
+          {% if split %}{% for s in split %}<th rowspan="2" class="text-end align-bottom">Avg H{{ s.split()[-1] }}</th>{% endfor %}
+          {% else %}<th class="text-end" title="Average finish in the deciding session">Avg finish</th>{% endif %}
+          {% if mode == 'finish' %}<th rowspan="{{ head_rows }}" class="text-end align-bottom">Best</th>{% endif %}
+          {% for e in rounds %}
+            <th class="round {{ 'round-group' if split }}" colspan="{{ per_round }}"><a href="{{ url_for('race_detail', event_id=e.id) }}" title="{{ e.name }} · {{ e.start_date|nice_date }}">R{{ loop.index }}</a></th>
+          {% endfor %}
+          {% if is_admin() %}<th rowspan="{{ head_rows }}"></th>{% endif %}
+        </tr>
+        {% if split %}
+        <tr>
+          {% for e in rounds %}{% for s in split %}<th class="round heat {{ 'round-start' if loop.first }}">{{ 'H' ~ s.split()[-1] }}</th>{% endfor %}{% endfor %}
+        </tr>
+        {% endif %}
+      </thead>
+      <tbody>
+      {% for row in table %}
+        <tr>
+          {% set p = row.official.position if row.official else (none if has_official or mode == 'finish' else loop.index) %}
+          {% set raced = row.raced > 0 %}
+          <td>{% if p %}<span class="pos {{ 'p%d'|format(p) if p <= 3 else '' }}">{{ p|ordinal }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="fw-semibold">{{ row.driver.name }} <span class="muted">#{{ row.number }}</span>{{ ui.former_chip(row.driver) }}</td>
+          {% if mode == 'points' %}
+            <td class="text-end counted">{{ row.counted|num if raced else '—' }}</td>
+            <td class="text-end muted">{{ row.total|num if raced else '—' }}</td>
+          {% else %}
+            <td class="text-end">{{ row.raced }}</td>
+            <td class="text-end">{{ row.wins or '—' }}</td>
+          {% endif %}
+          {% if split %}{% for v in row.heat_averages %}<td class="text-end {{ 'counted' if mode == 'finish' and loop.last }}">{{ avg(v) }}</td>{% endfor %}
+          {% else %}<td class="text-end {{ 'counted' if mode == 'finish' }}">{{ avg(row.average) }}</td>{% endif %}
+          {% if mode == 'finish' %}<td class="text-end">{{ ui.place(row.best) if row.best else '—' }}</td>{% endif %}
+
+          {% for c in row.finish_cells %}
+            {% set i = loop.index0 %}
+            {% set dropped = i in row.dropped %}
+            {% set title = rounds[i].name ~ (' · %s pts'|format(c.points|num) if c and c.points is not none else '') ~ (' · dropped' if dropped else '') ~ (' · missed' if c is none else '') %}
+            {% if split %}
+              {% for h in row.heat_cells[i] %}
+                <td class="round {{ 'round-start' if loop.first }} {{ 'dropped' if dropped }} {{ 'missed' if h is none }}" title="{{ title }} · {{ split[loop.index0] }}">
+                  {% if h is none %}—{% elif h.dnf %}{{ ui.out(h) }}{% elif h.finish_pos %}{{ ui.place(h.finish_pos, dropped) }}{{ ui.pen(h) }}{% else %}—{% endif %}{% if dropped and loop.last %}<span class="drop-chip">D</span>{% endif %}
+                </td>
+              {% endfor %}
+            {% else %}
+              <td class="round {{ 'dropped' if dropped }} {{ 'missed' if c is none }}" title="{{ title }}{{ ' · ' ~ c.session if c and not c.main }}">
+                {% if c is none %}—{% elif c.dnf %}{{ ui.out(c) }}{% elif c.pos %}{{ ui.place(c.pos, dropped) }}{{ ui.pen(c) }}{% else %}—{% endif %}{% if c and not c.main %}<span class="drop-chip session-chip">{{ c.session.split()|map('first')|join }}</span>{% endif %}{% if dropped %}<span class="drop-chip">D</span>{% endif %}
+              </td>
+            {% endif %}
+          {% endfor %}
+          {% if is_admin() %}<td class="actions">
+            {% if row.official %}{{ edit_btn('series_position', row.official) }}
+            {% else %}<button type="button" class="btn btn-icon" title="Set championship position" data-form="series_position"
+                data-defaults='{{ {"series": current, "season": season, "driver_id": row.driver.id, "kart_class": kart_class}|tojson|forceescape }}'><i class="bi bi-hash"></i></button>{% endif %}
+          </td>{% endif %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ 9 + rounds|length * per_round }}"><div class="empty">No results in this series yet.</div></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="small muted mt-2">{% if has_official %}Pos is the official championship finish in the whole field, so it skips drivers from other teams. {% endif %}
+  {% if split %}Each round shows the Heat 1 and Heat 2 finish. {% else %}Each round shows the deciding finish; a tag marks a round where only an earlier session was run. {% endif %}
+  {% if mode == 'points' %}Hover a round for its points. Missed rounds score 0 and count toward drops; when rounds tie on points, the earliest is dropped.
+  {% else %}No points recorded for this series, so there's no championship order: drivers are listed by rounds raced, then average finish.{% endif %}</p>
+{% else %}
+<div class="rms-card"><div class="empty"><i class="bi bi-trophy"></i>No completed series rounds yet. Give races a series name and enter results.</div></div>
+{% endif %}
+{% endblock %}

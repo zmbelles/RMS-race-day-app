@@ -2,38 +2,62 @@
 {% from "_forms.html" import add_btn, edit_btn, delete_btn %}
 {% import "_ui.html" as ui %}
 {% block title %}Drivers{% endblock %}
-{% block actions %}{{ add_btn('driver', 'Driver') }}{% endblock %}
+{% block actions %}{{ add_btn('driver_new', 'Driver') }}{% endblock %}
 {% block content %}
 <div class="row g-3">
   <div class="col-xxl-9">
     <div class="rms-card">
       <div class="rms-card-head">
-        <h2><i class="bi bi-person-badge"></i> Lineup <span class="chip">{{ drivers|length }}</span></h2>
-        <span class="small muted d-none d-md-inline">Click a setup value to change it from the command bar</span>
+        <h2><i class="bi bi-person-badge"></i> Drivers <span class="chip">{{ drivers|length }}</span></h2>
+        <span class="small muted d-none d-md-inline">Open a driver for their setup, runs and results</span>
       </div>
       <div class="table-responsive">
-        <table class="table table-rms table-hover lineup">
-          <thead><tr><th>#</th><th>Driver</th><th>Kart</th><th>Setup</th><th>SPR</th><th>FTW</th><th>RTW</th><th>PSI</th>
-            <th class="text-center">Wins</th><th class="text-center">Races</th><th></th></tr></thead>
+        <table class="table table-rms table-hover">
+          <thead><tr><th>Driver</th><th>Classes</th>
+            <th class="text-center">Wins</th><th class="text-center">Podiums</th><th class="text-center">Top 5s</th><th class="text-center">Races</th><th></th></tr></thead>
           <tbody>
           {% for d in drivers %}
             <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}" class="{{ '' if d.active else 'opacity-50' }}">
-              <td class="num">{{ d.number }}</td>
-              <td><div class="fw-semibold text-nowrap">{{ d.name }}</div><span class="chip">{{ d.kart_class }}</span>{% if not d.active %} <span class="small muted">inactive</span>{% endif %}</td>
-              <td class="small text-nowrap">{{ d.kart_name }}</td>
-              <td class="small"><a href="{{ url_for('setup_detail', setup_id=d.setup_id) }}">#{{ d.setup_id }}</a></td>
-              {{ ui.lineup_cells(d) }}
+              <td><div class="d-flex align-items-center gap-2">{{ ui.avatar(d.name, d.number, 'red') }}<span class="fw-semibold text-nowrap">{{ d.name }}</span></div></td>
+              <td>{% for e in classes.get(d.id, []) %}<span class="chip me-1 mb-1 class-tag"><strong>#{{ e.number }}</strong> {{ e.kart_class }}</span>{% else %}<span class="small muted">No class yet</span>{% endfor %}</td>
               <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
+              <td class="text-center">{{ d.podiums or '—' }}</td>
+              <td class="text-center">{{ d.top5s or '—' }}</td>
               <td class="text-center">{{ d.race_count }}</td>
-              <td class="actions">{{ edit_btn('driver', d) }}{{ delete_btn('driver', d.id, 'driver and their runs and results') }}</td>
+              <td class="actions">{{ edit_btn('driver', d) }}{{ ui.retire_controls(d, 'btn-icon w-auto px-2') }}</td>
             </tr>
           {% else %}
-            <tr><td colspan="11"><div class="empty"><i class="bi bi-person-plus"></i>No drivers yet. Add a setup and a kart, then add a driver.</div></td></tr>
+            <tr><td colspan="7"><div class="empty"><i class="bi bi-person-plus"></i>No current drivers. Add a setup and a kart, then add a driver.</div></td></tr>
           {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+      {% if former %}
+    <div class="rms-card mt-3">
+      <div class="rms-card-head"><h2><i class="bi bi-person-dash"></i> Former drivers <span class="chip">{{ former|length }}</span></h2>
+        <span class="small muted d-none d-md-inline">Their results and records are kept</span></div>
+      <div class="table-responsive">
+        <table class="table table-rms table-hover">
+          <thead><tr><th>#</th><th>Driver</th><th>Left</th><th class="text-center">Wins</th><th class="text-center">Podiums</th><th class="text-center">Top 5s</th><th class="text-center">Races</th><th></th></tr></thead>
+          <tbody>
+          {% for d in former %}
+            <tr data-href="{{ url_for('driver_detail', driver_id=d.id) }}">
+              <td class="num muted">{{ d.number }}</td>
+              <td><div class="fw-semibold text-nowrap">{{ d.name }}</div><span class="chip">{{ d.kart_class }}</span></td>
+              <td class="small">{{ d.left_on|nice_date if d.left_on else '' }}{% if d.left_on and d.left_note %} · {% endif %}<span class="muted">{{ d.left_note or ('—' if not d.left_on else '') }}</span></td>
+              <td class="text-center fw-bold">{{ d.wins or '—' }}</td>
+              <td class="text-center">{{ d.podiums or '—' }}</td>
+              <td class="text-center">{{ d.top5s or '—' }}</td>
+              <td class="text-center">{{ d.race_count }}</td>
+              <td class="actions">{{ ui.retire_controls(d, 'btn-icon w-auto px-2') }}{{ delete_btn('driver', d.id, 'driver and ALL their results, runs and standings') }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
   </div>
   <div class="col-xxl-3">
     <div class="rms-card">

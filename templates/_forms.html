@@ -27,11 +27,10 @@
               <label class="form-label" for="{{ key }}-{{ f.name }}">{{ f.label }}{% if f.required %} <span class="text-danger">*</span>{% endif %}</label>
               {% if f.type == 'select' %}
                 <select class="form-select" name="{{ f.name }}" id="{{ key }}-{{ f.name }}" {% if f.required %}required{% endif %}
-                        {% if f.filter_by %}data-filter-by="{{ f.filter_by }}"{% endif %} data-default="{{ default or '' }}">
+                        data-default="{{ default or '' }}">
                   <option value="">{{ 'Choose…' if f.required else '—' }}</option>
-                  {% for value, label, fkey, fill in opts[f.options] %}
-                    <option value="{{ value }}" {% if fkey is not none %}data-key="{{ fkey }}"{% endif %}
-                            {% if fill %}data-fill='{{ fill|tojson|forceescape }}'{% endif %}>{{ label }}</option>
+                  {% for value, label, fill in opts[f.options] %}
+                    <option value="{{ value }}" {% if fill %}data-fill='{{ fill|tojson|forceescape }}'{% endif %}>{{ label }}</option>
                   {% endfor %}
                 </select>
               {% elif f.type == 'textarea' %}
@@ -44,13 +43,11 @@
                        {% if f.list %}list="{{ f.list }}"{% endif %}
                        {% if f.placeholder %}placeholder="{{ f.placeholder }}"{% endif %}
                        {% if f.required %}required{% endif %} data-default="{{ default if default is not none else '' }}">
+                {% if f.list %}<datalist id="{{ f.list }}">{% for value, label, fill in opts[f.options] %}<option value="{{ value }}">{% endfor %}</datalist>{% endif %}
               {% endif %}
             {% endif %}
           </div>
         {% endfor %}
-        {% if key == 'setup' %}
-          <div class="col-12"><div class="rms-ratio-live">Gear ratio <strong data-live-ratio>—</strong></div></div>
-        {% endif %}
         </div>
       </div>
       <div class="modal-footer">

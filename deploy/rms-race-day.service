@@ -1,0 +1,20 @@
+[Unit]
+Description=RMS Race Day
+After=network.target
+
+[Service]
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+EnvironmentFile=__CONF_DIR__/env
+# One process: the sign-in lockout is kept in memory. Caddy in front handles HTTPS.
+ExecStart=__APP_DIR__/.venv/bin/waitress-serve --host 127.0.0.1 --port 8000 --threads 8 app:app
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=__DATA_DIR__
+
+[Install]
+WantedBy=multi-user.target
